@@ -14,6 +14,9 @@ import {
   DMSans_600SemiBold,
 } from '@expo-google-fonts/dm-sans';
 import { useFonts } from 'expo-font';
+import { ActivityIndicator, StatusBar, View } from 'react-native';
+
+// ── Existing screens (unchanged) ─────────────────────────────────────────────
 import { GetStartedScreen } from './src/screens/GetStartedScreen';
 import { FlightIntakeScreen } from './src/screens/FlightIntakeScreen';
 import { FlightOptionsScreen } from './src/screens/FlightOptionsScreen';
@@ -21,10 +24,19 @@ import { TripIntakeScreen } from './src/screens/TripIntakeScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { AccountScreen } from './src/screens/AccountScreen';
 import { PlanResultScreen } from './src/screens/PlanResultScreen';
-import { colors, fonts } from './src/theme/colors';
-import { ActivityIndicator, StatusBar, View } from 'react-native';
+
+// ── Existing providers / theme (unchanged) ───────────────────────────────────
 import { AppSessionProvider } from './src/context/AppSessionContext';
+import { colors, fonts } from './src/theme/colors';
 import type { RootStackParamList } from './src/navigation/types';
+
+// ── New: IoT provider and screens ────────────────────────────────────────────
+import { IoTProvider } from './src/context/IoTContext';
+import { DeviceListScreen } from './src/screens/DeviceListScreen';
+import { DeviceRegistrationScreen } from './src/screens/DeviceRegistrationScreen';
+import { IoTDashboardScreen } from './src/screens/IoTDashboardScreen';
+import { TripMonitorScreen } from './src/screens/TripMonitorScreen';
+import { IoTAlertHistoryScreen } from './src/screens/IoTAlertHistoryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -63,33 +75,38 @@ export default function App() {
 
   return (
     <AppSessionProvider>
-      <NavigationContainer theme={navigationTheme}>
-        <StatusBar barStyle="light-content" backgroundColor={colors.background} />
-        <Stack.Navigator
-          initialRouteName="GetStarted"
-          screenOptions={{
-            headerStyle: {
-              backgroundColor: colors.background,
-            },
-            headerTintColor: colors.primary,
-            headerTitleStyle: {
-              fontFamily: fonts.bodySemibold,
-            },
-            headerShadowVisible: false,
-            contentStyle: {
-              backgroundColor: colors.background,
-            },
-          }}
-        >
-          <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Account" component={AccountScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="GetStarted" component={GetStartedScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="FlightIntake" component={FlightIntakeScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="FlightOptions" component={FlightOptionsScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="TripIntake" component={TripIntakeScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="PlanResult" component={PlanResultScreen} options={{ headerShown: false }} />
-        </Stack.Navigator>
-      </NavigationContainer>
+      {/* IoTProvider is nested inside AppSessionProvider so it can read the access token */}
+      <IoTProvider>
+        <NavigationContainer theme={navigationTheme}>
+          <StatusBar barStyle="light-content" backgroundColor={colors.background} />
+          <Stack.Navigator
+            initialRouteName="GetStarted"
+            screenOptions={{
+              headerStyle: { backgroundColor: colors.background },
+              headerTintColor: colors.primary,
+              headerTitleStyle: { fontFamily: fonts.bodySemibold },
+              headerShadowVisible: false,
+              contentStyle: { backgroundColor: colors.background },
+            }}
+          >
+            {/* ── Existing screens — DO NOT MODIFY ───────────────────────────── */}
+            <Stack.Screen name="Auth" component={AuthScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Account" component={AccountScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="GetStarted" component={GetStartedScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="FlightIntake" component={FlightIntakeScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="FlightOptions" component={FlightOptionsScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="TripIntake" component={TripIntakeScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="PlanResult" component={PlanResultScreen} options={{ headerShown: false }} />
+
+            {/* ── New: IoT screens ────────────────────────────────────────────── */}
+            <Stack.Screen name="IoTDevices" component={DeviceListScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="IoTRegisterDevice" component={DeviceRegistrationScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="IoTDashboard" component={IoTDashboardScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="IoTTripMonitor" component={TripMonitorScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="IoTAlertHistory" component={IoTAlertHistoryScreen} options={{ headerShown: false }} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </IoTProvider>
     </AppSessionProvider>
   );
 }
