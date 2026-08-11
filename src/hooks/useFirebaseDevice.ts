@@ -44,17 +44,25 @@ export function useFirebaseDevice(
       return;
     }
 
+    if (!rtdb || !firebaseAuth) {
+      setError('Firebase is not configured.');
+      return;
+    }
+
+    const db = rtdb;
+    const auth = firebaseAuth;
+
     let cancelled = false;
 
     const attach = async () => {
       try {
         // Authenticate with Firebase using the short-lived custom token
-        await signInWithCustomToken(firebaseAuth, firebaseToken);
+        await signInWithCustomToken(auth, firebaseToken);
 
         if (cancelled) return;
 
         // ── Listener 1: live safety data ──────────────────────────────────
-        const live = ref(rtdb, `/devices/${deviceId}/safetyData/live`);
+        const live = ref(db, `/devices/${deviceId}/safetyData/live`);
         liveRef.current = live;
         onValue(live, (snapshot) => {
           if (cancelled) return;
@@ -66,14 +74,14 @@ export function useFirebaseDevice(
         });
 
         // ── Listener 2: device online status ──────────────────────────────
-        const status = ref(rtdb, `/devices/${deviceId}/status/online`);
+        const status = ref(db, `/devices/${deviceId}/status/online`);
         statusRef.current = status;
         onValue(status, (snapshot) => {
           if (!cancelled) setDeviceOnline(snapshot.val() === true);
         });
 
         // ── Listener 3: Firebase connection state ──────────────────────────
-        const conn = ref(rtdb, '.info/connected');
+        const conn = ref(db, '.info/connected');
         connRef.current = conn;
         onValue(conn, (snapshot) => {
           if (!cancelled) setFirebaseConnected(snapshot.val() === true);

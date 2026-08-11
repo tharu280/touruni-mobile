@@ -11,9 +11,9 @@
 //   EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
 //   EXPO_PUBLIC_FIREBASE_APP_ID=
 
-import { initializeApp, getApps } from 'firebase/app';
-import { getDatabase } from 'firebase/database';
-import { getAuth } from 'firebase/auth';
+import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
+import { getDatabase, Database } from 'firebase/database';
+import { getAuth, Auth } from 'firebase/auth';
 
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -25,11 +25,28 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Prevent duplicate initialization (hot reload safe)
-const firebaseApp = getApps().length === 0
-  ? initializeApp(firebaseConfig)
-  : getApps()[0];
+export const firebaseConfigured = Boolean(
+  firebaseConfig.apiKey && firebaseConfig.databaseURL && firebaseConfig.projectId
+);
 
-export const rtdb = getDatabase(firebaseApp);
-export const firebaseAuth = getAuth(firebaseApp);
+// IoT/Firebase is an optional feature (see iot-device-implementation-plan.md).
+// Skip init when unconfigured so a missing Firebase project doesn't crash the
+// whole app for every screen that has nothing to do with IoT.
+let firebaseApp: FirebaseApp | null = null;
+let rtdbInstance: Database | null = null;
+let firebaseAuthInstance: Auth | null = null;
+
+if (firebaseConfigured) {
+  firebaseApp = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+  rtdbInstance = getDatabase(firebaseApp);
+  firebaseAuthInstance = getAuth(firebaseApp);
+} else {
+  console.warn(
+    'Firebase is not configured (EXPO_PUBLIC_FIREBASE_* env vars missing). ' +
+      'IoT live-data features will be unavailable.'
+  );
+}
+
+export const rtdb = rtdbInstance;
+export const firebaseAuth = firebaseAuthInstance;
 export default firebaseApp;
