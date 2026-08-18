@@ -87,9 +87,9 @@ export const getAlertHistory = (
 
 export const startTrip = (
   token: string,
-  payload: { device_id: string; biometric_verified: boolean }
+  payload: { device_id: string; biometric_verified: boolean; planning_session_id?: string }
 ) =>
-  iotRequest<{ trip_id: string; device_id: string; started_at: string }>(
+  iotRequest<{ trip_id: string; device_id: string; started_at: string; planning_session_id?: string | null }>(
     '/iot/trips/start',
     token,
     { method: 'POST', body: JSON.stringify(payload) }

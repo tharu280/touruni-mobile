@@ -103,6 +103,7 @@ export interface TripSummary {
   duration_minutes?: number;
   total_alerts?: number;
   max_risk_score?: number;
+  planning_session_id?: string | null;
 }
 
 // Pending alert to flush when offline

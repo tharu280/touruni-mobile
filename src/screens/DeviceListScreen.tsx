@@ -4,13 +4,14 @@ import {
   Alert,
   FlatList,
   Pressable,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIoT } from '../context/IoTContext';
 import { useAppSession } from '../context/AppSessionContext';
@@ -57,16 +58,20 @@ export const DeviceListScreen = ({ navigation }: Props) => {
     navigation.navigate('IoTDashboard', { deviceId: device.device_id });
   }, [navigation, setActiveDevice]);
 
+  const onlineCount = devices.filter((d) => d.online).length;
+
   const renderDevice = ({ item }: { item: DeviceSummary }) => (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
       onPress={() => handleSelect(item)}
+      accessibilityRole="button"
+      accessibilityLabel={`${item.label}, ${item.online ? 'online' : 'offline'}`}
     >
       <View style={styles.cardLeft}>
         <View style={[styles.onlineDot, { backgroundColor: item.online ? '#27B987' : '#4A6258' }]} />
-        <View>
-          <Text style={styles.deviceLabel}>{item.label}</Text>
-          <Text style={styles.deviceSub}>
+        <View style={styles.cardText}>
+          <Text style={styles.deviceLabel} numberOfLines={1}>{item.label}</Text>
+          <Text style={styles.deviceSub} numberOfLines={1}>
             {item.online
               ? 'Online'
               : item.last_seen
@@ -75,22 +80,52 @@ export const DeviceListScreen = ({ navigation }: Props) => {
           </Text>
         </View>
       </View>
-      <Pressable onPress={() => handleDelete(item)} hitSlop={12} style={styles.deleteBtn}>
-        <Ionicons name="trash-outline" size={20} color="#4A6258" />
-      </Pressable>
+      <View style={styles.cardRight}>
+        <Pressable
+          onPress={() => handleDelete(item)}
+          hitSlop={12}
+          style={({ pressed }) => [styles.deleteBtn, pressed && styles.pressed]}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${item.label}`}
+        >
+          <Ionicons name="trash-outline" size={19} color="#4A6258" />
+        </Pressable>
+        <Ionicons name="chevron-forward" size={18} color="#3A554A" />
+      </View>
     </Pressable>
   );
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>My Devices</Text>
+        <Pressable
+          style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
+          onPress={navigation.goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+        >
+          <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
+        </Pressable>
+
+        <View style={styles.headerTextWrap}>
+          <Text style={styles.title}>My Devices</Text>
+          {!devicesLoading && (
+            <Text style={styles.subtitle}>
+              {devices.length === 0
+                ? 'No devices yet'
+                : `${devices.length} device${devices.length === 1 ? '' : 's'} · ${onlineCount} online`}
+            </Text>
+          )}
+        </View>
+
         <Pressable
           style={({ pressed }) => [styles.addBtn, pressed && styles.pressed]}
           onPress={() => navigation.navigate('IoTRegisterDevice')}
+          accessibilityRole="button"
+          accessibilityLabel="Register a device"
         >
           <Ionicons name="add" size={24} color="#FFFFFF" />
         </Pressable>
@@ -98,19 +133,41 @@ export const DeviceListScreen = ({ navigation }: Props) => {
 
       {devicesLoading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={colors.primary} size="large" />
+          <View style={styles.loadingOrb}>
+            <ActivityIndicator color={colors.primary} size="large" />
+          </View>
+          <Text style={styles.loadingTitle}>Loading your devices</Text>
         </View>
       ) : devices.length === 0 ? (
         <View style={styles.center}>
-          <Ionicons name="hardware-chip-outline" size={64} color="#2A4A3A" />
-          <Text style={styles.emptyTitle}>No devices registered</Text>
-          <Text style={styles.emptySub}>Tap + to add your first vehicle</Text>
+          <View style={styles.emptyIconOuter}>
+            <View style={styles.emptyIconInner}>
+              <Ionicons name="hardware-chip-outline" size={36} color="#27B987" />
+            </View>
+          </View>
+          <Text style={styles.emptyTitle}>No devices yet</Text>
+          <Text style={styles.emptySub}>
+            Pair your vehicle's safety device to start monitoring driver alertness and road conditions in real time.
+          </Text>
           <Pressable
-            style={({ pressed }) => [styles.emptyBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.emptyBtnFrame, pressed && styles.pressed]}
             onPress={() => navigation.navigate('IoTRegisterDevice')}
+            accessibilityRole="button"
           >
-            <Text style={styles.emptyBtnText}>Register a Device</Text>
+            <LinearGradient
+              colors={['#27B987', '#169368']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.emptyBtn}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#FFFFFF" />
+              <Text style={styles.emptyBtnText}>Register a Device</Text>
+            </LinearGradient>
           </Pressable>
+          <View style={styles.emptyHintRow}>
+            <Ionicons name="qr-code-outline" size={14} color="#4A6258" />
+            <Text style={styles.emptyHint}>You'll scan a QR code inside the vehicle</Text>
+          </View>
         </View>
       ) : (
         <FlatList
@@ -120,6 +177,7 @@ export const DeviceListScreen = ({ navigation }: Props) => {
           contentContainerStyle={styles.list}
           onRefresh={refreshDevices}
           refreshing={devicesLoading}
+          ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
         />
       )}
     </SafeAreaView>
@@ -132,16 +190,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
+  backBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(12,36,26,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(39,185,135,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTextWrap: { flex: 1, alignItems: 'center', marginHorizontal: 8 },
   title: {
     color: '#FFFFFF',
     fontFamily: fonts.displayBold,
-    fontSize: 28,
-    letterSpacing: -0.5,
+    fontSize: 20,
+    letterSpacing: -0.3,
   },
+  subtitle: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 12, marginTop: 2 },
   addBtn: {
     width: 44,
     height: 44,
@@ -149,8 +219,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#27B987',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#27B987',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 5,
   },
-  list: { paddingHorizontal: 16, paddingBottom: 32 },
+
+  list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 32 },
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -161,38 +237,89 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(39, 185, 135, 0.18)',
     paddingVertical: 16,
     paddingHorizontal: 18,
-    marginBottom: 10,
   },
-  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  onlineDot: { width: 10, height: 10, borderRadius: 5 },
-  deviceLabel: {
-    color: '#FFFFFF',
-    fontFamily: fonts.bodySemibold,
-    fontSize: 16,
-    fontWeight: '700',
-  },
+  cardLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 },
+  cardText: { flex: 1, minWidth: 0 },
+  onlineDot: { width: 10, height: 10, borderRadius: 5, flexShrink: 0 },
+  deviceLabel: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 16, fontWeight: '700' },
   deviceSub: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 13, marginTop: 2 },
-  deleteBtn: { paddingLeft: 12 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  cardRight: { flexDirection: 'row', alignItems: 'center', gap: 14, marginLeft: 8 },
+  deleteBtn: { padding: 2 },
+
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 36 },
+
+  // Loading state (matches PlanResultScreen's loading treatment)
+  loadingOrb: {
+    width: 82,
+    height: 82,
+    borderRadius: 41,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(39, 185, 135, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(39, 185, 135, 0.22)',
+  },
+  loadingTitle: { color: '#FFFFFF', fontFamily: fonts.displayBold, fontSize: 18, marginTop: 22 },
+
+  // Empty state
+  emptyIconOuter: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(39, 185, 135, 0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(39, 185, 135, 0.15)',
+  },
+  emptyIconInner: {
+    width: 84,
+    height: 84,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.forestElevated,
+    borderWidth: 1,
+    borderColor: 'rgba(39, 185, 135, 0.3)',
+  },
   emptyTitle: {
     color: '#FFFFFF',
     fontFamily: fonts.displayBold,
-    fontSize: 20,
-    marginTop: 16,
-  },
-  emptySub: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 14 },
-  emptyBtn: {
+    fontSize: 22,
+    letterSpacing: -0.4,
     marginTop: 24,
-    backgroundColor: '#27B987',
+    textAlign: 'center',
+  },
+  emptySub: {
+    color: '#7C9B8C',
+    fontFamily: fonts.body,
+    fontSize: 14,
+    lineHeight: 21,
+    textAlign: 'center',
+    marginTop: 10,
+    maxWidth: 290,
+  },
+  emptyBtnFrame: {
+    marginTop: 28,
     borderRadius: 28,
-    paddingVertical: 14,
-    paddingHorizontal: 32,
+    overflow: 'hidden',
+    shadowColor: '#27B987',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.3,
+    shadowRadius: 14,
+    elevation: 6,
   },
-  emptyBtnText: {
-    color: '#FFFFFF',
-    fontFamily: fonts.bodySemibold,
-    fontSize: 16,
-    fontWeight: '700',
+  emptyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    minHeight: 56,
+    paddingHorizontal: 28,
   },
+  emptyBtnText: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 16, fontWeight: '700' },
+  emptyHintRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 18 },
+  emptyHint: { color: '#4A6258', fontFamily: fonts.body, fontSize: 12 },
+
   pressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
 });

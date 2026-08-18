@@ -17,7 +17,6 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIoT } from '../context/IoTContext';
 import { useAppSession } from '../context/AppSessionContext';
 import { startTrip } from '../api/iotClient';
-import { authenticateDriver } from '../hooks/useBiometricAuth';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme/colors';
 import { ALERT_TIER_COLORS, ALERT_TIER_LABELS, type AlertTier } from '../types/iot';
@@ -32,6 +31,7 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
     deviceOnline,
     firebaseConnected,
     firebaseError,
+    activeTripId,
     setActiveTripId,
   } = useIoT();
 
@@ -53,16 +53,10 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
     }
   }, [liveData?.alertTier]);
 
-  // ── Start trip with biometric auth ────────────────────────────────────────
+  // ── Start trip ────────────────────────────────────────────────────────────
   const handleStartTrip = async () => {
     setStartingTrip(true);
     try {
-      const bio = await authenticateDriver();
-      if (!bio.success) {
-        if (bio.error) Alert.alert('Authentication Failed', bio.error);
-        return;
-      }
-
       if (!accessToken) return;
       const trip = await startTrip(accessToken, {
         device_id: deviceId,
@@ -241,21 +235,31 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
           </View>
         </View>
 
-        {/* ── Start Trip button ────────────────────────────────────────────── */}
-        <Pressable
-          style={({ pressed }) => [styles.tripBtn, pressed && styles.pressed, startingTrip && styles.disabled]}
-          onPress={handleStartTrip}
-          disabled={startingTrip}
-        >
-          {startingTrip ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <>
-              <Ionicons name="play-circle-outline" size={22} color="#FFFFFF" />
-              <Text style={styles.tripBtnText}>Start Trip (Face ID)</Text>
-            </>
-          )}
-        </Pressable>
+        {/* ── Start Trip / Trip in progress ───────────────────────────────── */}
+        {activeTripId ? (
+          <Pressable
+            style={({ pressed }) => [styles.tripBtn, pressed && styles.pressed]}
+            onPress={() => navigation.navigate('IoTTripMonitor', { deviceId, tripId: activeTripId })}
+          >
+            <Ionicons name="pulse-outline" size={22} color="#FFFFFF" />
+            <Text style={styles.tripBtnText}>Trip in Progress — View Monitor</Text>
+          </Pressable>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [styles.tripBtn, pressed && styles.pressed, startingTrip && styles.disabled]}
+            onPress={handleStartTrip}
+            disabled={startingTrip}
+          >
+            {startingTrip ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <Ionicons name="play-circle-outline" size={22} color="#FFFFFF" />
+                <Text style={styles.tripBtnText}>Start Trip (Face ID)</Text>
+              </>
+            )}
+          </Pressable>
+        )}
 
       </ScrollView>
     </SafeAreaView>

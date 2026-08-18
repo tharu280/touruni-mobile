@@ -8,16 +8,11 @@ import React, {
   useState,
 } from 'react';
 import { useAppSession } from './AppSessionContext';
-import {
-  listDevices,
-  getFirebaseToken,
-  logAlertEvent,
-} from '../api/iotClient';
+import { listDevices, getFirebaseToken } from '../api/iotClient';
 import { useFirebaseDevice } from '../hooks/useFirebaseDevice';
 import { useAlertAudio } from '../hooks/useAlertAudio';
 import type {
   AlertEvent,
-  AlertEventPayload,
   AlertTier,
   DeviceSummary,
   SafetyDataLive,
@@ -38,6 +33,8 @@ interface IoTContextValue {
   // Live Firebase data
   liveData: SafetyDataLive | null;
   deviceOnline: boolean;
+  /** Age of the newest reading in ms — null before the first packet arrives. */
+  dataAgeMs: number | null;
   firebaseConnected: boolean;
   firebaseError: string | null;
 
@@ -75,7 +72,7 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
   const { speakIfNeeded } = useAlertAudio();
 
   // Firebase listener (driven by activeDeviceId + firebaseToken)
-  const { liveData, deviceOnline, firebaseConnected, error: firebaseError } =
+  const { liveData, deviceOnline, dataAgeMs, firebaseConnected, error: firebaseError } =
     useFirebaseDevice(activeDeviceId, firebaseToken);
 
   // ── Load devices ───────────────────────────────────────────────────────────
@@ -144,48 +141,29 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (!liveData || !activeDeviceId || !accessToken) return;
 
-    const { alertTier, riskScore, gps, driver } = liveData;
+    const { alertTier, riskScore, gps } = liveData;
 
     // New alert: tier increased into 1+
     if (alertTier > 0 && alertTier > lastAlertTierRef.current) {
       // Speak voice prompt (Tier 2+)
       speakIfNeeded(alertTier as AlertTier);
 
-      // Log to backend (fire-and-forget — don't await to avoid blocking render)
-      const payload: AlertEventPayload = {
+      // Persistence is the BACKEND's job, not ours. /iot/telemetry already
+      // writes an alert event on every tier increase, and it sees the data
+      // whether or not a phone is awake, unlocked, or even in the vehicle.
+      // Posting from here as well produced two rows per alert.
+      //
+      // This list is the on-screen feed only; the durable history comes from
+      // GET /iot/alert-events, which the history screen already calls.
+      const newAlert: AlertEvent = {
+        event_id: `local-${liveData.timestampMs}-${alertTier}`,
         device_id: activeDeviceId,
         alert_tier: alertTier as AlertTier,
         risk_score: riskScore,
         triggered_at: new Date(liveData.timestampMs).toISOString(),
-        gps: {
-          latitude: gps.latitude,
-          longitude: gps.longitude,
-          speed_kmh: gps.speedKmh,
-        },
-        driver_data: {
-          drowsy_level: driver.drowsyLevel,
-          confidence: driver.confidence,
-          eye_status: driver.eyeStatus,
-          yawning_status: driver.yawningStatus,
-        },
+        gps: { latitude: gps.latitude, longitude: gps.longitude },
       };
-
-      logAlertEvent(accessToken, payload)
-        .then((res) => {
-          // Prepend to recent alerts list (keep last 20)
-          const newAlert: AlertEvent = {
-            event_id: res.event_id,
-            device_id: activeDeviceId,
-            alert_tier: alertTier as AlertTier,
-            risk_score: riskScore,
-            triggered_at: payload.triggered_at,
-            gps: { latitude: gps.latitude, longitude: gps.longitude },
-          };
-          setRecentAlerts((prev) => [newAlert, ...prev].slice(0, 20));
-        })
-        .catch(() => {
-          // TODO: queue for offline flush (see plan Section 16)
-        });
+      setRecentAlerts((prev) => [newAlert, ...prev].slice(0, 20));
     }
 
     lastAlertTierRef.current = alertTier as AlertTier;
@@ -202,6 +180,7 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
       setActiveDevice,
       liveData,
       deviceOnline,
+      dataAgeMs,
       firebaseConnected,
       firebaseError,
       activeTripId,
@@ -216,6 +195,7 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
       setActiveDevice,
       liveData,
       deviceOnline,
+      dataAgeMs,
       firebaseConnected,
       firebaseError,
       activeTripId,

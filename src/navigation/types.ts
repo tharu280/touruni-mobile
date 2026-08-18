@@ -29,7 +29,7 @@ export type RootStackParamList = {
   // ── IoT screens (new) ─────────────────────────────────────────────────────
   IoTDevices: undefined;
   IoTRegisterDevice: undefined;
-  IoTDashboard: { deviceId: string };
-  IoTTripMonitor: { deviceId: string; tripId: string };
+  IoTDashboard: { deviceId: string; sessionId?: string };
+  IoTTripMonitor: { deviceId: string; tripId: string; sessionId?: string };
   IoTAlertHistory: { deviceId: string };
 };
