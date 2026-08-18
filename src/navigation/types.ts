@@ -24,4 +24,5 @@ export type RootStackParamList = {
     plan?: PlanPayload;
     sessionId?: string;
   };
+  AdminDashboard: { adminToken: string };
 };

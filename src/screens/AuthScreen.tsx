@@ -41,6 +41,20 @@ export const AuthScreen = ({ route, navigation }: Props) => {
 
     setLoading(true);
     try {
+      if (mode === 'login' && email.trim().toLowerCase() === 'admin@touruni.com') {
+        const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/admin/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: email.trim(), password }),
+        });
+        if (!response.ok) {
+          throw new Error('Invalid admin credentials.');
+        }
+        const data = await response.json();
+        navigation.replace('AdminDashboard', { adminToken: data.token });
+        return;
+      }
+
       if (mode === 'signup') await session.signup(name.trim(), email.trim(), password);
       else await session.login(email.trim(), password);
       navigation.replace('GetStarted');

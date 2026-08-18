@@ -21,6 +21,7 @@ import { TripIntakeScreen } from './src/screens/TripIntakeScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { AccountScreen } from './src/screens/AccountScreen';
 import { PlanResultScreen } from './src/screens/PlanResultScreen';
+import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen';
 import { colors, fonts } from './src/theme/colors';
 import { ActivityIndicator, StatusBar, View } from 'react-native';
 import { AppSessionProvider } from './src/context/AppSessionContext';
@@ -88,6 +89,7 @@ export default function App() {
           <Stack.Screen name="FlightOptions" component={FlightOptionsScreen} options={{ headerShown: false }} />
           <Stack.Screen name="TripIntake" component={TripIntakeScreen} options={{ headerShown: false }} />
           <Stack.Screen name="PlanResult" component={PlanResultScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ headerShown: false }} />
         </Stack.Navigator>
       </NavigationContainer>
     </AppSessionProvider>
