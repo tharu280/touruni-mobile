@@ -15,6 +15,13 @@ module.exports = {
     ],
     'expo-secure-store',
     'expo-font',
+    [
+      'expo-location',
+      {
+        locationWhenInUsePermission:
+          'Allow TripMind to show your approximate location on the map when the vehicle GPS is unavailable.',
+      },
+    ],
   ],
   android: {
     ...appJson.expo.android,

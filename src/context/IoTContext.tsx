@@ -8,7 +8,7 @@ import React, {
   useState,
 } from 'react';
 import { useAppSession } from './AppSessionContext';
-import { listDevices, getFirebaseToken } from '../api/iotClient';
+import { listDevices, getFirebaseToken, logAlertEvent } from '../api/iotClient';
 import { useFirebaseDevice } from '../hooks/useFirebaseDevice';
 import { useAlertAudio } from '../hooks/useAlertAudio';
 import type {
@@ -25,6 +25,15 @@ interface IoTContextValue {
   devices: DeviceSummary[];
   devicesLoading: boolean;
   refreshDevices: () => Promise<void>;
+  /**
+   * A Firebase token good for reading every device this user owns (any one
+   * device's /devices/{id}/firebase-token call returns a user-scoped token,
+   * not a device-scoped one — see firebase_admin_service.py). Fetched as
+   * soon as the device list loads, independent of which device is active,
+   * so the device LIST screen can show real per-device online status via
+   * useDevicesOnlineStatus() without waiting for a device to be opened.
+   */
+  listFirebaseToken: string | null;
 
   // Active device
   activeDeviceId: string | null;
@@ -56,6 +65,11 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
   // Device list
   const [devices, setDevices] = useState<DeviceSummary[]>([]);
   const [devicesLoading, setDevicesLoading] = useState(false);
+
+  // List-level Firebase token — independent of activeDeviceId, see
+  // listFirebaseToken's doc comment on IoTContextValue.
+  const [listFirebaseToken, setListFirebaseToken] = useState<string | null>(null);
+  const listTokenExpiryRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Active device + Firebase token for it
   const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
@@ -93,6 +107,43 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     if (accessToken) refreshDevices();
   }, [accessToken, refreshDevices]);
+
+  // ── List-level Firebase token — fetched once the list is non-empty ─────────
+  // Any one owned device's /firebase-token response covers every device the
+  // user owns (see the doc comment above), so this doesn't need to run per
+  // device — just once, using whichever device happens to be first.
+
+  const fetchListToken = useCallback(
+    async (seedDeviceId: string) => {
+      if (!accessToken) return;
+      try {
+        const res = await getFirebaseToken(accessToken, seedDeviceId);
+        setListFirebaseToken(res.firebase_token);
+
+        if (listTokenExpiryRef.current) clearTimeout(listTokenExpiryRef.current);
+        const refreshInMs = (res.expires_in - 300) * 1000;
+        listTokenExpiryRef.current = setTimeout(() => {
+          fetchListToken(seedDeviceId);
+        }, Math.max(refreshInMs, 10_000));
+      } catch {
+        setListFirebaseToken(null);
+      }
+    },
+    [accessToken]
+  );
+
+  useEffect(() => {
+    if (devices.length > 0 && !listFirebaseToken) {
+      fetchListToken(devices[0].device_id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [devices, listFirebaseToken]);
+
+  useEffect(() => {
+    return () => {
+      if (listTokenExpiryRef.current) clearTimeout(listTokenExpiryRef.current);
+    };
+  }, []);
 
   // ── Set active device → fetch Firebase token ───────────────────────────────
 
@@ -148,13 +199,6 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
       // Speak voice prompt (Tier 2+)
       speakIfNeeded(alertTier as AlertTier);
 
-      // Persistence is the BACKEND's job, not ours. /iot/telemetry already
-      // writes an alert event on every tier increase, and it sees the data
-      // whether or not a phone is awake, unlocked, or even in the vehicle.
-      // Posting from here as well produced two rows per alert.
-      //
-      // This list is the on-screen feed only; the durable history comes from
-      // GET /iot/alert-events, which the history screen already calls.
       const newAlert: AlertEvent = {
         event_id: `local-${liveData.timestampMs}-${alertTier}`,
         device_id: activeDeviceId,
@@ -164,6 +208,30 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
         gps: { latitude: gps.latitude, longitude: gps.longitude },
       };
       setRecentAlerts((prev) => [newAlert, ...prev].slice(0, 20));
+
+      // Durable persistence used to be the BACKEND's job: /iot/telemetry
+      // wrote an alert event server-side on every tier increase, so posting
+      // from here too produced two rows per alert. Now that the Main Hub
+      // writes telemetry directly to Firebase RTDB and no longer calls
+      // /iot/telemetry at all, nothing else logs this — so this IS the only
+      // place an alert event gets persisted. Best-effort: a missed POST here
+      // (app backgrounded, no network) just means one gap in history, not a
+      // crash — the live tier/TTS/dashboard experience doesn't depend on it.
+      logAlertEvent(accessToken, {
+        device_id: activeDeviceId,
+        alert_tier: alertTier as AlertTier,
+        risk_score: riskScore,
+        triggered_at: new Date(liveData.timestampMs).toISOString(),
+        gps: { latitude: gps.latitude, longitude: gps.longitude, speed_kmh: gps.speedKmh },
+        driver_data: {
+          drowsy_level: liveData.driver.drowsyLevel,
+          confidence: liveData.driver.confidence,
+          eye_status: liveData.driver.eyeStatus,
+          yawning_status: liveData.driver.yawningStatus,
+        },
+      }).catch(() => {
+        // Non-fatal — see comment above.
+      });
     }
 
     lastAlertTierRef.current = alertTier as AlertTier;
@@ -176,6 +244,7 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
       devices,
       devicesLoading,
       refreshDevices,
+      listFirebaseToken,
       activeDeviceId,
       setActiveDevice,
       liveData,
@@ -191,6 +260,7 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
       devices,
       devicesLoading,
       refreshDevices,
+      listFirebaseToken,
       activeDeviceId,
       setActiveDevice,
       liveData,

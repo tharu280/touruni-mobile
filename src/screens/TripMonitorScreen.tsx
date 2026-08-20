@@ -2,12 +2,12 @@ import React, { useCallback, useRef, useState } from 'react';
 import {
   Alert,
   Pressable,
-  SafeAreaView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import MapView, { Marker, Polyline } from 'react-native-maps';
 import type { MapViewDirectionsOrigin } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
@@ -88,7 +88,7 @@ export const TripMonitorScreen = ({ navigation, route }: Props) => {
   }, [accessToken, tripId, navigation, setActiveTripId]);
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* Full-screen map */}

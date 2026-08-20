@@ -4,15 +4,17 @@ import {
   Alert,
   Animated,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import MapView, { Marker } from 'react-native-maps';
+import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIoT } from '../context/IoTContext';
 import { useAppSession } from '../context/AppSessionContext';
@@ -72,23 +74,54 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
     }
   };
 
+  const hasData = !!liveData;
   const tier = (liveData?.alertTier ?? 0) as AlertTier;
-  const tierColor = ALERT_TIER_COLORS[tier];
-  const tierLabel = ALERT_TIER_LABELS[tier];
+  const tierColor = hasData ? ALERT_TIER_COLORS[tier] : '#7C9B8C';
+  const tierLabel = hasData ? ALERT_TIER_LABELS[tier] : 'Waiting for Data';
   const gps = liveData?.gps;
   const driver = liveData?.driver;
   const vehicle = liveData?.vehicle;
 
-  // ── Connection badge ───────────────────────────────────────────────────────
-  const connectionLabel = !firebaseConnected
-    ? '⚠ Reconnecting...'
+  // ── Phone-location fallback — only while the hub hasn't reported a GPS fix.
+  // One-shot read, not a live watch: this is a stand-in for the map, not a
+  // tracking feature, and it's the phone's position, not the vehicle's.
+  const [phoneLocation, setPhoneLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    if (gps?.fixed) return; // hub GPS is authoritative once it has a fix
+    let cancelled = false;
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted' || cancelled) return;
+      try {
+        const position = await Location.getCurrentPositionAsync({});
+        if (!cancelled) {
+          setPhoneLocation({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+        }
+      } catch {
+        // No fix available from the phone either — falls through to the placeholder.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [gps?.fixed]);
+
+  const usingPhoneFallback = !gps?.fixed && !!phoneLocation;
+
+  // ── Connection status ────────────────────────────────────────────────────
+  const connectionText = !firebaseConnected
+    ? 'Reconnecting…'
     : deviceOnline
-    ? `● Connected · ${gps?.speedKmh?.toFixed(0) ?? '—'} km/h`
-    : '● Device Offline';
+    ? `Connected · ${gps?.speedKmh?.toFixed(0) ?? '—'} km/h`
+    : 'Device offline';
   const connectionColor = !firebaseConnected ? '#F5A623' : deviceOnline ? '#27B987' : '#4A6258';
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
       {/* Header */}
@@ -96,18 +129,23 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
         <Pressable
           style={({ pressed }) => [styles.backBtn, pressed && styles.pressed]}
           onPress={navigation.goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
         >
           <Ionicons name="arrow-back" size={22} color="#FFFFFF" />
         </Pressable>
         <View>
           <Text style={styles.headerTitle}>IoT Monitor</Text>
-          <Text style={[styles.connectionBadge, { color: connectionColor }]}>
-            {connectionLabel}
-          </Text>
+          <View style={styles.connectionRow}>
+            <View style={[styles.connectionDot, { backgroundColor: connectionColor }]} />
+            <Text style={[styles.connectionBadge, { color: connectionColor }]}>{connectionText}</Text>
+          </View>
         </View>
         <Pressable
           style={({ pressed }) => [styles.historyBtn, pressed && styles.pressed]}
           onPress={() => navigation.navigate('IoTAlertHistory', { deviceId })}
+          accessibilityRole="button"
+          accessibilityLabel="View alert history"
         >
           <Ionicons name="notifications-outline" size={22} color="#27B987" />
         </Pressable>
@@ -115,23 +153,31 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
-        {/* ── Alert tier card ──────────────────────────────────────────────── */}
-        <Animated.View style={[styles.tierCard, { borderColor: tierColor, transform: [{ scale: pulseAnim }] }]}>
-          <Ionicons
-            name={tier === 0 ? 'shield-checkmark' : tier === 1 ? 'warning' : 'alert-circle'}
-            size={32}
-            color={tierColor}
-          />
+        {/* ── Alert tier card — the one dominant status on this screen ───────── */}
+        <Animated.View
+          style={[
+            styles.tierCard,
+            { borderColor: hasData ? tierColor : 'rgba(255,255,255,0.08)' },
+            { transform: [{ scale: pulseAnim }] },
+          ]}
+        >
+          <View style={[styles.tierIconRing, { backgroundColor: `${tierColor}1A` }]}>
+            <Ionicons
+              name={!hasData ? 'radio-outline' : tier === 0 ? 'shield-checkmark' : tier === 1 ? 'warning' : 'alert-circle'}
+              size={30}
+              color={tierColor}
+            />
+          </View>
           <Text style={[styles.tierLabel, { color: tierColor }]}>{tierLabel}</Text>
-          {liveData && (
-            <Text style={styles.riskScore}>
-              Risk Score: {(liveData.riskScore * 100).toFixed(0)}%
-            </Text>
-          )}
+          <Text style={styles.riskScore}>
+            {hasData
+              ? `Risk Score: ${(liveData!.riskScore * 100).toFixed(0)}%`
+              : 'No telemetry received from this device yet'}
+          </Text>
           <View style={[styles.liveBadge, { backgroundColor: `${tierColor}22` }]}>
-            <View style={[styles.liveDot, { backgroundColor: liveData ? tierColor : '#4A6258' }]} />
+            <View style={[styles.liveDot, { backgroundColor: tierColor }]} />
             <Text style={[styles.liveText, { color: tierColor }]}>
-              {liveData ? 'Live Data' : 'No Data'}
+              {hasData ? 'Live Data' : 'No Data'}
             </Text>
           </View>
         </Animated.View>
@@ -144,120 +190,160 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
           </View>
         )}
 
-        {/* ── GPS Map ──────────────────────────────────────────────────────── */}
-        {gps?.fixed ? (
-          <View style={styles.mapCard}>
-            <MapView
-              style={StyleSheet.absoluteFillObject}
-              region={{
-                latitude: gps.latitude,
-                longitude: gps.longitude,
-                latitudeDelta: 0.004,
-                longitudeDelta: 0.004,
-              }}
-              mapType="standard"
-            >
-              <Marker
-                coordinate={{ latitude: gps.latitude, longitude: gps.longitude }}
-                title="Vehicle"
-                pinColor="#27B987"
-              />
-            </MapView>
-            <View style={styles.gpsOverlay}>
-              <Text style={styles.gpsCoord}>
-                {gps.latitude.toFixed(5)} · {gps.longitude.toFixed(5)}
-              </Text>
-              <View style={styles.gpsRow}>
-                <Ionicons name="satellite-outline" size={12} color="#27B987" />
-                <Text style={styles.gpsSub}>{gps.satellites} sats · {gps.fixed ? '● Fix' : '○ No Fix'}</Text>
+        <View style={styles.detailGroup}>
+          {/* ── GPS Map — vehicle GPS when the hub has a fix, otherwise the
+              phone's own location as an approximate stand-in ────────────── */}
+          {gps?.fixed || usingPhoneFallback ? (
+            <View style={styles.mapCard}>
+              <MapView
+                style={StyleSheet.absoluteFillObject}
+                region={{
+                  latitude: gps?.fixed ? gps.latitude : phoneLocation!.latitude,
+                  longitude: gps?.fixed ? gps.longitude : phoneLocation!.longitude,
+                  latitudeDelta: 0.004,
+                  longitudeDelta: 0.004,
+                }}
+                mapType="standard"
+              >
+                {gps?.fixed ? (
+                  <Marker
+                    coordinate={{ latitude: gps.latitude, longitude: gps.longitude }}
+                    title="Vehicle"
+                    pinColor="#27B987"
+                  />
+                ) : (
+                  <Marker
+                    coordinate={phoneLocation!}
+                    title="Approximate · Your Location"
+                    pinColor="#4A90D9"
+                  />
+                )}
+              </MapView>
+              <View style={styles.gpsOverlay}>
+                {gps?.fixed ? (
+                  <>
+                    <Text style={styles.gpsCoord}>
+                      {gps.latitude.toFixed(5)} · {gps.longitude.toFixed(5)}
+                    </Text>
+                    <View style={styles.gpsRow}>
+                      <Ionicons name="locate-outline" size={12} color="#27B987" />
+                      <Text style={styles.gpsSub}>{gps.satellites} sats · ● Fix</Text>
+                    </View>
+                  </>
+                ) : (
+                  <View style={styles.gpsRow}>
+                    <Ionicons name="phone-portrait-outline" size={12} color="#4A90D9" />
+                    <Text style={[styles.gpsSub, styles.gpsSubApprox]}>Approximate · Your Location</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.mapPlaceholder}>
+              <View style={styles.mapIconRing}>
+                <Ionicons name="location-outline" size={26} color="#4A6258" />
+              </View>
+              <Text style={styles.mapPlaceholderText}>GPS not acquired</Text>
+            </View>
+          )}
+
+          {/* ── Drowsiness panel ───────────────────────────────────────────── */}
+          <View style={styles.panel}>
+            <Text style={styles.panelTitle}>Drowsiness Detection</Text>
+            <View style={styles.metricsRow}>
+              <View style={styles.metric}>
+                <Text style={styles.metricValue}>{driver?.earScore?.toFixed(2) ?? '—'}</Text>
+                <Text style={styles.metricLabel}>EAR</Text>
+              </View>
+              <View style={[styles.metric, styles.metricDivider]}>
+                <Text style={styles.metricValue}>{driver?.drowsyLevel ?? '—'}</Text>
+                <Text style={styles.metricLabel}>Drowsy Lvl</Text>
+              </View>
+              <View style={[styles.metric, styles.metricDivider]}>
+                <Text style={[styles.metricValue, { color: driver?.eyeStatus === 'closed' ? '#E8441A' : '#27B987' }]}>
+                  {driver?.eyeStatus ?? '—'}
+                </Text>
+                <Text style={styles.metricLabel}>Eyes</Text>
+              </View>
+              <View style={[styles.metric, styles.metricDivider]}>
+                <Text style={styles.metricValue}>
+                  {driver?.confidence != null ? `${(driver.confidence * 100).toFixed(0)}%` : '—'}
+                </Text>
+                <Text style={styles.metricLabel}>Confidence</Text>
               </View>
             </View>
           </View>
-        ) : (
-          <View style={styles.mapPlaceholder}>
-            <Ionicons name="location-outline" size={32} color="#2A4A3A" />
-            <Text style={styles.mapPlaceholderText}>GPS not acquired</Text>
-          </View>
-        )}
 
-        {/* ── Drowsiness panel ─────────────────────────────────────────────── */}
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Drowsiness Detection</Text>
-          <View style={styles.metricsRow}>
-            <View style={styles.metric}>
-              <Text style={styles.metricValue}>{driver?.earScore?.toFixed(2) ?? '—'}</Text>
-              <Text style={styles.metricLabel}>EAR</Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={styles.metricValue}>{driver?.drowsyLevel ?? '—'}</Text>
-              <Text style={styles.metricLabel}>Drowsy Lvl</Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={[styles.metricValue, { color: driver?.eyeStatus === 'closed' ? '#E8441A' : '#27B987' }]}>
-                {driver?.eyeStatus ?? '—'}
-              </Text>
-              <Text style={styles.metricLabel}>Eyes</Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={styles.metricValue}>
-                {driver?.confidence != null ? `${(driver.confidence * 100).toFixed(0)}%` : '—'}
-              </Text>
-              <Text style={styles.metricLabel}>Confidence</Text>
+          {/* ── Vehicle panel ──────────────────────────────────────────────── */}
+          <View style={styles.panel}>
+            <Text style={styles.panelTitle}>Vehicle & Safety</Text>
+            <View style={styles.metricsRow}>
+              <View style={styles.metric}>
+                <Text style={styles.metricValue}>
+                  {gps?.speedKmh != null ? `${gps.speedKmh.toFixed(0)}` : '—'}
+                </Text>
+                <Text style={styles.metricLabel}>km/h</Text>
+              </View>
+              <View style={[styles.metric, styles.metricDivider]}>
+                <Text style={styles.metricValue}>
+                  {vehicle?.distanceCm != null ? `${(vehicle.distanceCm / 100).toFixed(1)}m` : '—'}
+                </Text>
+                <Text style={styles.metricLabel}>Distance</Text>
+              </View>
+              <View style={[styles.metric, styles.metricDivider]}>
+                <Text style={[
+                  styles.metricValue,
+                  { color: (vehicle?.ttcSeconds ?? 99) < 2 ? '#E8441A' : '#FFFFFF' },
+                ]}>
+                  {vehicle?.ttcSeconds != null ? `${vehicle.ttcSeconds.toFixed(1)}s` : '—'}
+                </Text>
+                <Text style={styles.metricLabel}>TTC</Text>
+              </View>
             </View>
           </View>
         </View>
 
-        {/* ── Vehicle panel ─────────────────────────────────────────────────── */}
-        <View style={styles.panel}>
-          <Text style={styles.panelTitle}>Vehicle & Safety</Text>
-          <View style={styles.metricsRow}>
-            <View style={styles.metric}>
-              <Text style={styles.metricValue}>
-                {gps?.speedKmh != null ? `${gps.speedKmh.toFixed(0)}` : '—'}
-              </Text>
-              <Text style={styles.metricLabel}>km/h</Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={styles.metricValue}>
-                {vehicle?.distanceCm != null ? `${(vehicle.distanceCm / 100).toFixed(1)}m` : '—'}
-              </Text>
-              <Text style={styles.metricLabel}>Distance</Text>
-            </View>
-            <View style={styles.metric}>
-              <Text style={[
-                styles.metricValue,
-                { color: (vehicle?.ttcSeconds ?? 99) < 2 ? '#E8441A' : '#FFFFFF' },
-              ]}>
-                {vehicle?.ttcSeconds != null ? `${vehicle.ttcSeconds.toFixed(1)}s` : '—'}
-              </Text>
-              <Text style={styles.metricLabel}>TTC</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* ── Start Trip / Trip in progress ───────────────────────────────── */}
+        {/* ── Start Trip / Trip in progress — the primary action ─────────── */}
         {activeTripId ? (
           <Pressable
-            style={({ pressed }) => [styles.tripBtn, pressed && styles.pressed]}
+            style={({ pressed }) => [styles.tripFrame, pressed && styles.pressed]}
             onPress={() => navigation.navigate('IoTTripMonitor', { deviceId, tripId: activeTripId })}
+            accessibilityRole="button"
+            accessibilityLabel="Trip in progress, view monitor"
           >
-            <Ionicons name="pulse-outline" size={22} color="#FFFFFF" />
-            <Text style={styles.tripBtnText}>Trip in Progress — View Monitor</Text>
+            <LinearGradient
+              colors={['#27B987', '#169368']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.tripBtn}
+            >
+              <Ionicons name="pulse-outline" size={22} color="#FFFFFF" />
+              <Text style={styles.tripBtnText}>Trip in Progress — View Monitor</Text>
+            </LinearGradient>
           </Pressable>
         ) : (
           <Pressable
-            style={({ pressed }) => [styles.tripBtn, pressed && styles.pressed, startingTrip && styles.disabled]}
+            style={({ pressed }) => [styles.tripFrame, pressed && styles.pressed, startingTrip && styles.disabled]}
             onPress={handleStartTrip}
             disabled={startingTrip}
+            accessibilityRole="button"
+            accessibilityLabel="Start trip with Face ID verification"
           >
-            {startingTrip ? (
-              <ActivityIndicator color="#FFFFFF" />
-            ) : (
-              <>
-                <Ionicons name="play-circle-outline" size={22} color="#FFFFFF" />
-                <Text style={styles.tripBtnText}>Start Trip (Face ID)</Text>
-              </>
-            )}
+            <LinearGradient
+              colors={['#27B987', '#169368']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 0 }}
+              style={styles.tripBtn}
+            >
+              {startingTrip ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Ionicons name="play-circle-outline" size={22} color="#FFFFFF" />
+                  <Text style={styles.tripBtnText}>Start Trip (Face ID)</Text>
+                </>
+              )}
+            </LinearGradient>
           </Pressable>
         )}
 
@@ -283,22 +369,30 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   headerTitle: { color: '#FFFFFF', fontFamily: fonts.displayBold, fontSize: 18 },
-  connectionBadge: { fontFamily: fonts.body, fontSize: 12, marginTop: 2 },
+  connectionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  connectionDot: { width: 6, height: 6, borderRadius: 3 },
+  connectionBadge: { fontFamily: fonts.body, fontSize: 12 },
   historyBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  scroll: { paddingHorizontal: 16, paddingBottom: 40, gap: 12 },
+  scroll: { paddingHorizontal: 16, paddingBottom: 40 },
 
   // Alert tier card
   tierCard: {
     backgroundColor: '#04100C',
     borderRadius: 20,
     borderWidth: 1.5,
-    paddingVertical: 24,
+    paddingVertical: 28,
     paddingHorizontal: 20,
     alignItems: 'center',
     gap: 8,
+    marginBottom: 20,
+  },
+  tierIconRing: {
+    width: 64, height: 64, borderRadius: 32,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
   },
   tierLabel: { fontFamily: fonts.displayBold, fontSize: 22, letterSpacing: -0.5 },
-  riskScore: { color: '#9FBAAD', fontFamily: fonts.body, fontSize: 13 },
+  riskScore: { color: '#9FBAAD', fontFamily: fonts.body, fontSize: 13, textAlign: 'center' },
   liveBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     borderRadius: 20, paddingVertical: 4, paddingHorizontal: 12, marginTop: 4,
@@ -312,8 +406,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(245,166,35,0.1)',
     borderRadius: 12, padding: 12,
     borderWidth: 1, borderColor: 'rgba(245,166,35,0.3)',
+    marginBottom: 12,
   },
   offlineText: { color: '#F5A623', fontFamily: fonts.body, fontSize: 13 },
+
+  // Secondary detail cards — grouped tighter together as one cluster
+  detailGroup: { gap: 12 },
 
   // Map
   mapCard: {
@@ -329,13 +427,19 @@ const styles = StyleSheet.create({
   gpsCoord: { color: '#C6DFD4', fontFamily: fonts.body, fontSize: 12 },
   gpsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   gpsSub: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 11 },
+  gpsSubApprox: { color: '#8FB8E0' },
   mapPlaceholder: {
-    height: 120, borderRadius: 20,
+    height: 130, borderRadius: 20,
     backgroundColor: '#04100C',
     borderWidth: 1, borderColor: 'rgba(39,185,135,0.18)',
     alignItems: 'center', justifyContent: 'center', gap: 8,
   },
-  mapPlaceholderText: { color: '#4A6258', fontFamily: fonts.body, fontSize: 13 },
+  mapIconRing: {
+    width: 56, height: 56, borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  mapPlaceholderText: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 13 },
 
   // Panels
   panel: {
@@ -347,17 +451,21 @@ const styles = StyleSheet.create({
     color: '#C6DFD4', fontFamily: fonts.bodySemibold,
     fontSize: 13, fontWeight: '700', marginBottom: 14,
   },
-  metricsRow: { flexDirection: 'row', justifyContent: 'space-around' },
-  metric: { alignItems: 'center', gap: 4 },
+  metricsRow: { flexDirection: 'row' },
+  metric: { flex: 1, alignItems: 'center', gap: 4 },
+  metricDivider: { borderLeftWidth: StyleSheet.hairlineWidth, borderLeftColor: 'rgba(255,255,255,0.08)' },
   metricValue: { color: '#FFFFFF', fontFamily: fonts.displayBold, fontSize: 22, letterSpacing: -0.5 },
   metricLabel: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 12 },
 
-  // Start trip
+  // Start trip — the primary action, given the same gradient treatment as
+  // other primary CTAs in the app (see DeviceRegistrationScreen).
+  tripFrame: {
+    borderRadius: 28, overflow: 'hidden', marginTop: 24,
+    shadowColor: '#27B987', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8,
+  },
   tripBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    backgroundColor: '#134D37',
-    borderRadius: 28, minHeight: 60,
-    borderWidth: 1, borderColor: 'rgba(39,185,135,0.4)',
+    minHeight: 60,
   },
   tripBtnText: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 17, fontWeight: '700' },
   pressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },

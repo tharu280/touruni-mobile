@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -13,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -52,6 +52,9 @@ export const DeviceRegistrationScreen = ({ navigation }: Props) => {
   const [qrPayload, setQRPayload] = useState<QRPayload | null>(null);
   const [label, setLabel] = useState('');
   const [loading, setLoading] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualDeviceId, setManualDeviceId] = useState('');
+  const [manualSecret, setManualSecret] = useState('');
 
   // ── QR scanned ─────────────────────────────────────────────────────────────
   const handleBarCode = ({ data }: { data: string }) => {
@@ -66,6 +69,15 @@ export const DeviceRegistrationScreen = ({ navigation }: Props) => {
       return;
     }
     setQRPayload(payload);
+  };
+
+  // ── Manual entry submitted — feeds the same qrPayload-driven flow below ─────
+  const handleManualSubmit = () => {
+    if (!manualDeviceId.trim() || !manualSecret.trim()) {
+      Alert.alert('Missing details', 'Enter both the device ID and the registration secret.');
+      return;
+    }
+    setQRPayload({ v: 1, device_id: manualDeviceId.trim(), secret: manualSecret.trim() });
   };
 
   // ── Register ───────────────────────────────────────────────────────────────
@@ -100,14 +112,14 @@ export const DeviceRegistrationScreen = ({ navigation }: Props) => {
   // ── Permission not yet requested ───────────────────────────────────────────
   if (!permission) {
     return (
-      <SafeAreaView style={styles.root}>
+      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <ActivityIndicator color={colors.primary} />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.root}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <StatusBar barStyle="light-content" backgroundColor={colors.background} />
 
       {/* Back button */}
@@ -123,29 +135,94 @@ export const DeviceRegistrationScreen = ({ navigation }: Props) => {
 
       {/* ── Camera / QR scanner ────────────────────────────────────────────── */}
       {!qrPayload ? (
-        <View style={styles.scanArea}>
-          {!permission.granted ? (
-            <View style={styles.permBox}>
-              <Ionicons name="camera-outline" size={48} color="#27B987" />
-              <Text style={styles.permText}>Camera access is needed to scan the QR code.</Text>
-              <Pressable style={styles.permBtn} onPress={requestPermission}>
-                <Text style={styles.permBtnText}>Allow Camera</Text>
-              </Pressable>
-            </View>
-          ) : (
-            <CameraView
-              style={StyleSheet.absoluteFillObject}
-              onBarcodeScanned={scanned ? undefined : handleBarCode}
-              barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            >
-              {/* Viewfinder overlay */}
-              <View style={styles.overlay}>
-                <View style={styles.finder} />
-                <Text style={styles.scanHint}>Align QR code within the frame</Text>
+        manualMode ? (
+          /* ── Manual entry panel ──────────────────────────────────────────── */
+          <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          >
+            <ScrollView contentContainerStyle={styles.formPanel}>
+              <Text style={styles.fieldLabel}>Device ID</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="hardware-chip-outline" size={19} color="#27B987" style={{ marginRight: 12 }} />
+                <TextInput
+                  style={styles.input}
+                  value={manualDeviceId}
+                  onChangeText={setManualDeviceId}
+                  placeholder="e.g. ESP32-MAC-F42DC9718A60"
+                  placeholderTextColor="#648A79"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                  autoFocus
+                />
               </View>
-            </CameraView>
-          )}
-        </View>
+
+              <Text style={styles.fieldLabel}>Registration Secret</Text>
+              <View style={styles.inputContainer}>
+                <Ionicons name="key-outline" size={19} color="#27B987" style={{ marginRight: 12 }} />
+                <TextInput
+                  style={styles.input}
+                  value={manualSecret}
+                  onChangeText={setManualSecret}
+                  placeholder="Paste the secret printed with the QR"
+                  placeholderTextColor="#648A79"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <Pressable
+                onPress={handleManualSubmit}
+                style={({ pressed }) => [styles.submitFrame, pressed && styles.pressed]}
+              >
+                <LinearGradient
+                  colors={['#27B987', '#169368']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.submitBtn}
+                >
+                  <Text style={styles.submitText}>Continue</Text>
+                  <Ionicons name="arrow-forward" size={20} color="#FFFFFF" />
+                </LinearGradient>
+              </Pressable>
+
+              <Pressable onPress={() => setManualMode(false)} style={styles.rescanBtn}>
+                <Text style={styles.rescanText}>Scan QR code instead</Text>
+              </Pressable>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        ) : (
+          <>
+            <View style={styles.scanArea}>
+              {!permission.granted ? (
+                <View style={styles.permBox}>
+                  <Ionicons name="camera-outline" size={48} color="#27B987" />
+                  <Text style={styles.permText}>Camera access is needed to scan the QR code.</Text>
+                  <Pressable style={styles.permBtn} onPress={requestPermission}>
+                    <Text style={styles.permBtnText}>Allow Camera</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <>
+                  <CameraView
+                    style={StyleSheet.absoluteFillObject}
+                    onBarcodeScanned={scanned ? undefined : handleBarCode}
+                    barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+                  />
+                  {/* Viewfinder overlay — a sibling on top, not a CameraView child:
+                      CameraView no longer supports children (Fabric-based in SDK 57). */}
+                  <View style={styles.overlay} pointerEvents="none">
+                    <View style={styles.finder} />
+                    <Text style={styles.scanHint}>Align QR code within the frame</Text>
+                  </View>
+                </>
+              )}
+            </View>
+            <Pressable onPress={() => setManualMode(true)} style={styles.manualLinkBtn}>
+              <Text style={styles.rescanText}>Enter device details manually</Text>
+            </Pressable>
+          </>
+        )
       ) : (
         /* ── Label entry panel ──────────────────────────────────────────── */
         <KeyboardAvoidingView
@@ -251,7 +328,7 @@ const styles = StyleSheet.create({
   permText: { color: '#9FBAAD', fontFamily: fonts.body, fontSize: 14, textAlign: 'center' },
   permBtn: { backgroundColor: '#27B987', borderRadius: 28, paddingVertical: 12, paddingHorizontal: 28 },
   permBtnText: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 15, fontWeight: '700' },
-  overlay: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24 },
+  overlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 24 },
   finder: {
     width: 220,
     height: 220,
@@ -283,6 +360,7 @@ const styles = StyleSheet.create({
   submitBtn: { minHeight: 60, paddingHorizontal: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
   submitText: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 18, fontWeight: '800' },
   rescanBtn: { alignItems: 'center', marginTop: 20 },
+  manualLinkBtn: { alignItems: 'center', marginTop: 16, marginBottom: 8 },
   rescanText: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 14, textDecorationLine: 'underline' },
   pressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },
   disabled: { opacity: 0.6 },

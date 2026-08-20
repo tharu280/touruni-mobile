@@ -14,7 +14,7 @@ import type { SafetyDataLive, DeviceStatus } from '../types/iot';
  * only honest signal available. Five telemetry cycles (3s each) of silence is a
  * real outage rather than one dropped packet.
  */
-const STALE_AFTER_MS = 15_000;
+export const STALE_AFTER_MS = 15_000;
 const STALENESS_POLL_MS = 3_000;
 
 export interface FirebaseDeviceState {

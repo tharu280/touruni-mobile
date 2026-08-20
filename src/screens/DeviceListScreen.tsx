@@ -16,6 +16,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIoT } from '../context/IoTContext';
 import { useAppSession } from '../context/AppSessionContext';
 import { deleteDevice } from '../api/iotClient';
+import { useDevicesOnlineStatus } from '../hooks/useDevicesOnlineStatus';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme/colors';
 import type { DeviceSummary } from '../types/iot';
@@ -23,8 +24,14 @@ import type { DeviceSummary } from '../types/iot';
 type Props = NativeStackScreenProps<RootStackParamList, 'IoTDevices'>;
 
 export const DeviceListScreen = ({ navigation }: Props) => {
-  const { devices, devicesLoading, refreshDevices, setActiveDevice } = useIoT();
+  const { devices, devicesLoading, refreshDevices, setActiveDevice, listFirebaseToken } = useIoT();
   const { accessToken } = useAppSession();
+
+  // devices_router.py's list_devices() hardcodes online=False on every
+  // device ("mobile resolves online state via Firebase RTDB") — this hook is
+  // the actual resolution. Falls back to the backend's last_seen (Mongo) for
+  // a device that's never sent live Firebase data at all.
+  const onlineStatus = useDevicesOnlineStatus(devices, listFirebaseToken);
 
   useEffect(() => {
     refreshDevices();
@@ -58,24 +65,38 @@ export const DeviceListScreen = ({ navigation }: Props) => {
     navigation.navigate('IoTDashboard', { deviceId: device.device_id });
   }, [navigation, setActiveDevice]);
 
-  const onlineCount = devices.filter((d) => d.online).length;
+  const onlineCount = devices.filter((d) => onlineStatus[d.device_id]?.online).length;
 
-  const renderDevice = ({ item }: { item: DeviceSummary }) => (
+  const renderDevice = ({ item }: { item: DeviceSummary }) => {
+    const status = onlineStatus[item.device_id];
+    const isOnline = status?.online ?? false;
+    // Firebase's live timestamp is the truth when we have it; fall back to
+    // the backend's last_seen (Mongo) only for a device that's never sent
+    // live data at all — same reasoning useFirebaseDevice.ts uses for the
+    // single active device, now applied per row.
+    const lastSeenMs = status?.lastSeenMs ?? null;
+    const lastSeenLabel = lastSeenMs
+      ? new Date(lastSeenMs).toLocaleTimeString()
+      : item.last_seen
+      ? new Date(item.last_seen).toLocaleTimeString()
+      : null;
+
+    return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
       onPress={() => handleSelect(item)}
       accessibilityRole="button"
-      accessibilityLabel={`${item.label}, ${item.online ? 'online' : 'offline'}`}
+      accessibilityLabel={`${item.label}, ${isOnline ? 'online' : 'offline'}`}
     >
       <View style={styles.cardLeft}>
-        <View style={[styles.onlineDot, { backgroundColor: item.online ? '#27B987' : '#4A6258' }]} />
+        <View style={[styles.onlineDot, { backgroundColor: isOnline ? '#27B987' : '#4A6258' }]} />
         <View style={styles.cardText}>
           <Text style={styles.deviceLabel} numberOfLines={1}>{item.label}</Text>
           <Text style={styles.deviceSub} numberOfLines={1}>
-            {item.online
+            {isOnline
               ? 'Online'
-              : item.last_seen
-              ? `Last seen ${new Date(item.last_seen).toLocaleTimeString()}`
+              : lastSeenLabel
+              ? `Last seen ${lastSeenLabel}`
               : 'Never connected'}
           </Text>
         </View>
@@ -93,7 +114,8 @@ export const DeviceListScreen = ({ navigation }: Props) => {
         <Ionicons name="chevron-forward" size={18} color="#3A554A" />
       </View>
     </Pressable>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
