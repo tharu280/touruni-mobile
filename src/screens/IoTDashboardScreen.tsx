@@ -3,25 +3,35 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
   StyleSheet,
+  Switch,
   Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useIoT } from '../context/IoTContext';
 import { useAppSession } from '../context/AppSessionContext';
-import { startTrip } from '../api/iotClient';
+import { startTrip, setDemoMode } from '../api/iotClient';
+import { hasNativeGoogleMapsKey } from '../config/maps';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme/colors';
 import { ALERT_TIER_COLORS, ALERT_TIER_LABELS, type AlertTier } from '../types/iot';
+
+// Google Maps renders as a flat black surface (no error, no placeholder)
+// when the API key isn't actually wired into the running build — show a
+// real "unavailable" state instead. Only relevant on Android (this only
+// ever takes effect in a native prebuild/dev-client/EAS build, never Expo
+// Go); iOS defaults to Apple Maps, which needs no key.
+const MAP_UNAVAILABLE = Platform.OS === 'android' && !hasNativeGoogleMapsKey;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'IoTDashboard'>;
 
@@ -39,6 +49,27 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
 
   const [startingTrip, setStartingTrip] = useState(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // ── Demo Mode toggle — live-switches the REAL device's own GPS/speed
+  // simulation (see checkDemoModeCommand() in the firmware). Local state is
+  // optimistic (reflects the last command sent); liveData.demoMode confirms
+  // once the device has actually picked it up on its next ~3s poll.
+  const [demoModeOn, setDemoModeOn] = useState(false);
+  const [togglingDemo, setTogglingDemo] = useState(false);
+
+  const handleToggleDemoMode = async (value: boolean) => {
+    if (!accessToken) return;
+    setDemoModeOn(value);
+    setTogglingDemo(true);
+    try {
+      await setDemoMode(accessToken, deviceId, value);
+    } catch (e) {
+      setDemoModeOn(!value); // revert the optimistic flip
+      Alert.alert('Demo Mode', e instanceof Error ? e.message : 'Could not update demo mode.');
+    } finally {
+      setTogglingDemo(false);
+    }
+  };
 
   // Pulse animation for critical tier
   useEffect(() => {
@@ -195,30 +226,38 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
               phone's own location as an approximate stand-in ────────────── */}
           {gps?.fixed || usingPhoneFallback ? (
             <View style={styles.mapCard}>
-              <MapView
-                style={StyleSheet.absoluteFillObject}
-                region={{
-                  latitude: gps?.fixed ? gps.latitude : phoneLocation!.latitude,
-                  longitude: gps?.fixed ? gps.longitude : phoneLocation!.longitude,
-                  latitudeDelta: 0.004,
-                  longitudeDelta: 0.004,
-                }}
-                mapType="standard"
-              >
-                {gps?.fixed ? (
-                  <Marker
-                    coordinate={{ latitude: gps.latitude, longitude: gps.longitude }}
-                    title="Vehicle"
-                    pinColor="#27B987"
-                  />
-                ) : (
-                  <Marker
-                    coordinate={phoneLocation!}
-                    title="Approximate · Your Location"
-                    pinColor="#4A90D9"
-                  />
-                )}
-              </MapView>
+              {MAP_UNAVAILABLE ? (
+                <View style={[StyleSheet.absoluteFill, styles.mapUnavailable]}>
+                  <Ionicons name="map-outline" size={28} color="#4A6258" />
+                  <Text style={styles.mapUnavailableText}>Map unavailable</Text>
+                </View>
+              ) : (
+                <MapView
+                  style={StyleSheet.absoluteFill}
+                  provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+                  region={{
+                    latitude: gps?.fixed ? gps.latitude : phoneLocation!.latitude,
+                    longitude: gps?.fixed ? gps.longitude : phoneLocation!.longitude,
+                    latitudeDelta: 0.004,
+                    longitudeDelta: 0.004,
+                  }}
+                  mapType="standard"
+                >
+                  {gps?.fixed ? (
+                    <Marker
+                      coordinate={{ latitude: gps.latitude, longitude: gps.longitude }}
+                      title="Vehicle"
+                      pinColor="#27B987"
+                    />
+                  ) : (
+                    <Marker
+                      coordinate={phoneLocation!}
+                      title="Approximate · Your Location"
+                      pinColor="#4A90D9"
+                    />
+                  )}
+                </MapView>
+              )}
               <View style={styles.gpsOverlay}>
                 {gps?.fixed ? (
                   <>
@@ -290,15 +329,6 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
                 </Text>
                 <Text style={styles.metricLabel}>Distance</Text>
               </View>
-              <View style={[styles.metric, styles.metricDivider]}>
-                <Text style={[
-                  styles.metricValue,
-                  { color: (vehicle?.ttcSeconds ?? 99) < 2 ? '#E8441A' : '#FFFFFF' },
-                ]}>
-                  {vehicle?.ttcSeconds != null ? `${vehicle.ttcSeconds.toFixed(1)}s` : '—'}
-                </Text>
-                <Text style={styles.metricLabel}>TTC</Text>
-              </View>
             </View>
           </View>
         </View>
@@ -346,6 +376,33 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
             </LinearGradient>
           </Pressable>
         )}
+
+        {/* ── Demo Mode — live-toggles the real device's own GPS/speed
+            simulation, for presentations where driving isn't possible.
+            Distance and drowsiness stay real either way. ─────────────── */}
+        <View style={styles.demoCard}>
+          <View style={styles.demoTextWrap}>
+            <View style={styles.demoTitleRow}>
+              <Text style={styles.demoTitle}>Demo Mode</Text>
+              {liveData?.demoMode && (
+                <View style={styles.demoActivePill}>
+                  <Text style={styles.demoActivePillText}>Active</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.demoSub}>
+              Simulates GPS location and speed for presentations — distance
+              and drowsiness readings stay real.
+            </Text>
+          </View>
+          <Switch
+            value={demoModeOn}
+            onValueChange={handleToggleDemoMode}
+            disabled={togglingDemo || !accessToken}
+            trackColor={{ false: '#2A3B34', true: '#27B987' }}
+            thumbColor="#FFFFFF"
+          />
+        </View>
 
       </ScrollView>
     </SafeAreaView>
@@ -428,6 +485,13 @@ const styles = StyleSheet.create({
   gpsRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
   gpsSub: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 11 },
   gpsSubApprox: { color: '#8FB8E0' },
+  mapUnavailable: {
+    backgroundColor: '#04100C',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  mapUnavailableText: { color: '#4A6258', fontFamily: fonts.body, fontSize: 12 },
   mapPlaceholder: {
     height: 130, borderRadius: 20,
     backgroundColor: '#04100C',
@@ -468,6 +532,29 @@ const styles = StyleSheet.create({
     minHeight: 60,
   },
   tripBtnText: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 17, fontWeight: '700' },
+  demoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#04100C',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(39, 185, 135, 0.18)',
+    padding: 16,
+    marginTop: 14,
+    gap: 12,
+  },
+  demoTextWrap: { flex: 1 },
+  demoTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  demoTitle: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 15, fontWeight: '700' },
+  demoActivePill: {
+    backgroundColor: 'rgba(39,185,135,0.15)',
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  demoActivePillText: { color: '#27B987', fontFamily: fonts.bodySemibold, fontSize: 10, fontWeight: '700' },
+  demoSub: { color: '#7C9B8C', fontFamily: fonts.body, fontSize: 12, marginTop: 4, lineHeight: 17 },
   pressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },
   disabled: { opacity: 0.6 },
 });

@@ -1,7 +1,7 @@
 // IoT API client — extends the existing API pattern from client.ts
 // Uses the same EXPO_PUBLIC_BACKEND_URL and Bearer token convention.
-// This file is NEW — do not modify client.ts.
 
+import { refreshAccessTokenOnce } from './authRefresh';
 import type {
   AlertEventPayload,
   AlertHistoryResponse,
@@ -19,17 +19,27 @@ async function iotRequest<T>(
 ): Promise<T> {
   if (!BACKEND_URL) throw new Error('EXPO_PUBLIC_BACKEND_URL is not configured.');
 
-  const headers = new Headers(options.headers as HeadersInit);
-  headers.set('Authorization', `Bearer ${token}`);
-  if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
+  const sendRequest = async (bearerToken: string) => {
+    const headers = new Headers(options.headers as HeadersInit);
+    headers.set('Authorization', `Bearer ${bearerToken}`);
+    if (options.body && !(options.body instanceof FormData) && !headers.has('Content-Type')) {
+      headers.set('Content-Type', 'application/json');
+    }
+    return globalThis.fetch(`${BACKEND_URL}${path}`, {
+      ...options,
+      headers,
+      credentials: 'include',
+    });
+  };
 
-  const response = await globalThis.fetch(`${BACKEND_URL}${path}`, {
-    ...options,
-    headers,
-    credentials: 'include',
-  });
+  let response = await sendRequest(token);
+  if (response.status === 401) {
+    // The session JWT is short-lived (15 min) and IoT flows (scan a QR, walk
+    // to the vehicle, type a label) can easily outlast it — retry once with a
+    // refreshed token instead of surfacing a raw "invalid or expired" error.
+    const refreshedToken = await refreshAccessTokenOnce();
+    if (refreshedToken) response = await sendRequest(refreshedToken);
+  }
 
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { detail?: string };
@@ -62,6 +72,16 @@ export const getFirebaseToken = (token: string, deviceId: string) =>
     `/devices/${encodeURIComponent(deviceId)}/firebase-token`,
     token
   );
+
+// Live-toggles Demo Mode on the real physical device (see the firmware's
+// checkDemoModeCommand()/applyDemoModeOverride()) — the device polls
+// /devices/{id}/commands/demoMode in Firebase RTDB roughly every telemetry
+// cycle, so this takes a few seconds to visibly take effect, not instant.
+export const setDemoMode = (token: string, deviceId: string, enabled: boolean) =>
+  iotRequest<void>(`/devices/${encodeURIComponent(deviceId)}/demo-mode`, token, {
+    method: 'POST',
+    body: JSON.stringify({ enabled }),
+  });
 
 // ── Alert events ─────────────────────────────────────────────────────────────
 

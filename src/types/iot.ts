@@ -17,6 +17,7 @@ export interface DriverData {
   eyeStatus: 'open' | 'closed' | 'unknown';
   yawningStatus: 'normal' | 'yawning';
   earScore: number;
+  driverVisible: boolean;    // was missing here even though normalizer.py always sends it
 }
 
 export interface VehicleData {
@@ -31,7 +32,13 @@ export interface SafetyDataLive {
   vehicle: VehicleData;
   gps: GpsData;
   timestampMs: number;
+  deviceUptimeMs: number;    // was missing here even though normalizer.py always sends it
   sequenceNum: number;
+  /** True while the device is substituting simulated GPS/speed for real
+   * readings (see checkDemoModeCommand()/applyDemoModeOverride() in the
+   * main-hub firmware) — distance and drowsiness stay real either way.
+   * Optional: only the WiFi-direct firmware sends it. */
+  demoMode?: boolean;
 }
 
 export interface DeviceStatus {

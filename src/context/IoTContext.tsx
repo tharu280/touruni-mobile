@@ -7,10 +7,12 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { Vibration } from 'react-native';
 import { useAppSession } from './AppSessionContext';
 import { listDevices, getFirebaseToken, logAlertEvent } from '../api/iotClient';
 import { useFirebaseDevice } from '../hooks/useFirebaseDevice';
 import { useAlertAudio } from '../hooks/useAlertAudio';
+import { vibrateForTier } from '../utils/alertVibration';
 import type {
   AlertEvent,
   AlertTier,
@@ -193,11 +195,13 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
     if (!liveData || !activeDeviceId || !accessToken) return;
 
     const { alertTier, riskScore, gps } = liveData;
+    const previousTier = lastAlertTierRef.current;
 
     // New alert: tier increased into 1+
-    if (alertTier > 0 && alertTier > lastAlertTierRef.current) {
+    if (alertTier > 0 && alertTier > previousTier) {
       // Speak voice prompt (Tier 2+)
       speakIfNeeded(alertTier as AlertTier);
+      vibrateForTier(alertTier as AlertTier);
 
       const newAlert: AlertEvent = {
         event_id: `local-${liveData.timestampMs}-${alertTier}`,
@@ -232,10 +236,21 @@ export const IoTProvider = ({ children }: { children: React.ReactNode }) => {
       }).catch(() => {
         // Non-fatal — see comment above.
       });
+    } else if (previousTier === 3 && alertTier < 3) {
+      // Tier 3's pattern uses repeat:true and never stops on its own.
+      Vibration.cancel();
     }
 
     lastAlertTierRef.current = alertTier as AlertTier;
   }, [liveData?.alertTier, liveData?.timestampMs]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stop any in-progress repeat:true vibration if the provider unmounts
+  // mid-alert (app close, navigation reset) rather than a normal tier drop.
+  useEffect(() => {
+    return () => {
+      Vibration.cancel();
+    };
+  }, []);
 
   // ── Context value ──────────────────────────────────────────────────────────
 

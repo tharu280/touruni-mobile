@@ -205,7 +205,7 @@ export const DeviceRegistrationScreen = ({ navigation }: Props) => {
               ) : (
                 <>
                   <CameraView
-                    style={StyleSheet.absoluteFillObject}
+                    style={StyleSheet.absoluteFill}
                     onBarcodeScanned={scanned ? undefined : handleBarCode}
                     barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
                   />
@@ -328,7 +328,7 @@ const styles = StyleSheet.create({
   permText: { color: '#9FBAAD', fontFamily: fonts.body, fontSize: 14, textAlign: 'center' },
   permBtn: { backgroundColor: '#27B987', borderRadius: 28, paddingVertical: 12, paddingHorizontal: 28 },
   permBtnText: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 15, fontWeight: '700' },
-  overlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 24 },
+  overlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 24 },
   finder: {
     width: 220,
     height: 220,

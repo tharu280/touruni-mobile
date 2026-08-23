@@ -237,15 +237,16 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
         {activeTab === 'route' && <RouteSection dashboard={dashboard} model={model} />}
         
         <View style={{ display: activeTab === 'tips' ? 'flex' : 'none', flex: 1 }}>
-          <TipsSection 
-            dashboard={dashboard} 
-            model={model} 
-            accessToken={accessToken} 
-            moodDemoEnabled={moodDemoEnabled} 
+          <TipsSection
+            dashboard={dashboard}
+            model={model}
+            accessToken={accessToken}
+            moodDemoEnabled={moodDemoEnabled}
+            conditionsDemoEnabled={conditionsDemoEnabled}
             setMoodDemoEnabled={(val) => {
               setMoodDemoEnabled(val);
               if (val) setConditionsDemoEnabled(false);
-            }} 
+            }}
             moodPromptDue={moodPromptDue} 
             setMoodPromptDue={setMoodPromptDue} 
             moodDemo={{ running: moodTimerRemaining !== null, secondsRemaining: moodTimerRemaining || 0 }}
@@ -318,7 +319,7 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
         </View>
         <Pressable
           style={[styles.headerButton, intelligenceRefreshing && styles.headerButtonBusy]}
-          onPress={refreshIntelligence}
+          onPress={() => void conditionsDemo.triggerNow()}
           disabled={!requestedSessionId || intelligenceRefreshing}
           accessibilityLabel="Refresh trip intelligence"
         >
@@ -374,11 +375,13 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
                 <Text style={styles.demoEyebrow}>LIVE DEMO</Text>
                 <Text style={styles.demoTitle}>Refresh trip conditions</Text>
                 <Text style={styles.demoDetail}>
-                  {conditionsDemo.running
-                    ? 'Checking weather, crowd and road signals now...'
-                    : conditionsDemoEnabled
-                      ? `Next check in ${conditionsDemo.secondsRemaining}s. The latest result stays visible.`
-                      : 'Off. Turn on to refresh every 1 minute while the app is open.'}
+                  {moodDemoEnabled
+                    ? "Off — the Tips tab's mood check-in demo is running. Turn that off first."
+                    : conditionsDemo.running
+                      ? 'Checking weather, crowd and road signals now...'
+                      : conditionsDemoEnabled
+                        ? `Next check in ${conditionsDemo.secondsRemaining}s. The latest result stays visible.`
+                        : 'Off. Turn on to refresh every 1 minute while the app is open.'}
                 </Text>
                 {!conditionsDemo.running && displayTime ? (
                   <Text style={[styles.demoDetail, { color: '#FF6B6B', fontWeight: '700', marginTop: 2, fontSize: 13 }]}>
@@ -392,7 +395,7 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
                   setConditionsDemoEnabled(val);
                   if (val) setMoodDemoEnabled(false);
                 }}
-                disabled={!requestedSessionId}
+                disabled={!requestedSessionId || moodDemoEnabled}
                 trackColor={{ false: '#294239', true: '#1B765C' }}
                 thumbColor={conditionsDemoEnabled ? colors.mint : '#A7B5AE'}
               />
