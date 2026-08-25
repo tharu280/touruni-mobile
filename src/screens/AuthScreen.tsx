@@ -18,6 +18,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppSession } from '../context/AppSessionContext';
+import { useAdminSession } from '../context/AdminSessionContext';
 import type { RootStackParamList } from '../navigation/types';
 import { colors, fonts } from '../theme/colors';
 
@@ -32,6 +33,7 @@ export const AuthScreen = ({ route, navigation }: Props) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const session = useAppSession();
+  const adminSession = useAdminSession();
 
   const submit = async () => {
     if (!email.trim() || password.length < 10 || (mode === 'signup' && !name.trim())) {
@@ -51,7 +53,8 @@ export const AuthScreen = ({ route, navigation }: Props) => {
           throw new Error('Invalid admin credentials.');
         }
         const data = await response.json();
-        navigation.replace('AdminDashboard', { adminToken: data.token });
+        await adminSession.setAdminToken(data.token);
+        navigation.replace('AdminDashboard');
         return;
       }
 
