@@ -41,7 +41,7 @@ export const AuthScreen = ({ route, navigation }: Props) => {
 
     setLoading(true);
     try {
-      if (mode === 'login' && email.trim().toLowerCase() === 'admin@touruni.com') {
+      if (mode === 'login' && email.trim().toLowerCase() === 'admin@tourmind.com') {
         const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/admin/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },

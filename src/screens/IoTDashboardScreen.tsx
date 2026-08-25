@@ -57,6 +57,18 @@ export const IoTDashboardScreen = ({ navigation, route }: Props) => {
   const [demoModeOn, setDemoModeOn] = useState(false);
   const [togglingDemo, setTogglingDemo] = useState(false);
 
+  // Without this, the switch only ever reflects the last command sent by
+  // THIS mount — navigating away and back (or an app reload) remounts the
+  // component, resets demoModeOn to false, and the switch shows off even
+  // though the device (and the "Active" pill above, which reads liveData
+  // directly) still has demo mode on. Re-sync whenever the confirmed value
+  // changes so the switch can't drift from what the device actually reports.
+  useEffect(() => {
+    if (liveData?.demoMode !== undefined) {
+      setDemoModeOn(liveData.demoMode);
+    }
+  }, [liveData?.demoMode]);
+
   const handleToggleDemoMode = async (value: boolean) => {
     if (!accessToken) return;
     setDemoModeOn(value);

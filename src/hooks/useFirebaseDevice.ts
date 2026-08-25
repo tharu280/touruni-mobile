@@ -17,6 +17,13 @@ import type { SafetyDataLive, DeviceStatus } from '../types/iot';
 export const STALE_AFTER_MS = 15_000;
 const STALENESS_POLL_MS = 3_000;
 
+// Ground speed can never be negative — guards against a firmware artifact
+// (seen briefly negative during Demo Mode) reaching the UI as a raw number.
+function sanitizeLiveData(data: SafetyDataLive): SafetyDataLive {
+  if (data.gps.speedKmh >= 0) return data;
+  return { ...data, gps: { ...data.gps, speedKmh: 0 } };
+}
+
 export interface FirebaseDeviceState {
   liveData: SafetyDataLive | null;
   /** Backend has seen the device AND its newest reading is under 15s old. */
@@ -86,7 +93,7 @@ export function useFirebaseDevice(
         onValue(live, (snapshot) => {
           if (cancelled) return;
           const data = snapshot.val() as SafetyDataLive | null;
-          setLiveData(data);
+          setLiveData(data && sanitizeLiveData(data));
           setError(null);
         }, (err) => {
           if (!cancelled) setError(err.message);
