@@ -1268,7 +1268,7 @@ const MoodHistory = ({ checkins, prediction }: { checkins: EmotionCheckinRecord[
   );
 };
 
-export const TipsSection = ({ model, accessToken, moodDemoEnabled, setMoodDemoEnabled, moodPromptDue, setMoodPromptDue, moodDemo, isActive = true, onMoodCheckIn }: CommonProps & {
+export const TipsSection = ({ model, accessToken, moodDemoEnabled, setMoodDemoEnabled, moodPromptDue, setMoodPromptDue, moodDemo, isActive = true, onMoodCheckIn, conditionsDemoEnabled }: CommonProps & {
   accessToken?: string | null;
   moodDemoEnabled?: boolean;
   setMoodDemoEnabled?: (val: boolean) => void;
@@ -1277,6 +1277,11 @@ export const TipsSection = ({ model, accessToken, moodDemoEnabled, setMoodDemoEn
   moodDemo?: { running: boolean; secondsRemaining: number };
   isActive?: boolean;
   onMoodCheckIn?: () => void;
+  /** True while the trip-conditions demo (PlanResultScreen) is running — the
+   * two demos are mutually exclusive (both call live external services), so
+   * this drives the explanatory copy/disabled state below instead of the
+   * switch silently doing nothing. */
+  conditionsDemoEnabled?: boolean;
 }) => {
   const [day, setDay] = useState(model.days[0]?.day || 1);
   const [mood, setMood] = useState<(typeof MOODS)[number]['key']>('neutral');
@@ -1530,17 +1535,19 @@ export const TipsSection = ({ model, accessToken, moodDemoEnabled, setMoodDemoEn
             <Text style={styles.subsectionLabel}>MOOD REMINDERS</Text>
             <Text style={styles.demoSwitchTitle}>Check in at the next stop</Text>
             <Text style={styles.mutedText}>
-              {!checkins.length
-                ? 'Complete one mood check first to enable reminders.'
-                : moodDemoEnabled
-                  ? `Next reminder in ${moodDemo?.secondsRemaining}s. Your current history stays saved.`
-                  : 'Off. Turn on to receive a prompt at the next planned stop.'}
+              {conditionsDemoEnabled
+                ? "Off — the trip conditions demo is running. Turn that off first."
+                : !checkins.length
+                  ? 'Complete one mood check first to enable reminders.'
+                  : moodDemoEnabled
+                    ? `Next reminder in ${moodDemo?.secondsRemaining}s. Your current history stays saved.`
+                    : 'Off. Turn on to receive a prompt at the next planned stop.'}
             </Text>
           </View>
           <Switch
             value={moodDemoEnabled}
             onValueChange={value => { if (setMoodDemoEnabled) setMoodDemoEnabled(value); if (!value && setMoodPromptDue) setMoodPromptDue(false); }}
-            disabled={!checkins.length}
+            disabled={!checkins.length || conditionsDemoEnabled}
             trackColor={{ false: '#294239', true: '#1B765C' }}
             thumbColor={moodDemoEnabled ? colors.mint : '#A7B5AE'}
           />

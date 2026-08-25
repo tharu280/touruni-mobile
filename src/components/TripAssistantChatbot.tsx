@@ -5,13 +5,13 @@ import {
   StyleSheet,
   Pressable,
   Modal,
-  SafeAreaView,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
   TextInput,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../theme/colors';
 import { askAssistant } from '../api/client';
@@ -86,7 +86,7 @@ export const TripAssistantChatbot = ({ sessionId }: { sessionId: string }) => {
         presentationStyle="pageSheet"
         onRequestClose={() => setModalVisible(false)}
       >
-        <SafeAreaView style={styles.modalSafeArea}>
+        <SafeAreaView style={styles.modalSafeArea} edges={['top', 'bottom']}>
           <KeyboardAvoidingView
             style={styles.keyboardAvoid}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
