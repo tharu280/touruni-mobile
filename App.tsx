@@ -25,6 +25,7 @@ import { TripIntakeScreen } from './src/screens/TripIntakeScreen';
 import { AuthScreen } from './src/screens/AuthScreen';
 import { AccountScreen } from './src/screens/AccountScreen';
 import { PlanResultScreen } from './src/screens/PlanResultScreen';
+import { AdminDashboardScreen } from './src/screens/AdminDashboardScreen';
 
 // ── Existing providers / theme (unchanged) ───────────────────────────────────
 import { AppSessionProvider } from './src/context/AppSessionContext';
@@ -99,6 +100,7 @@ export default function App() {
               <Stack.Screen name="FlightOptions" component={FlightOptionsScreen} options={{ headerShown: false }} />
               <Stack.Screen name="TripIntake" component={TripIntakeScreen} options={{ headerShown: false }} />
               <Stack.Screen name="PlanResult" component={PlanResultScreen} options={{ headerShown: false }} />
+              <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} options={{ headerShown: false }} />
 
               {/* ── New: IoT screens ────────────────────────────────────────────── */}
               <Stack.Screen name="IoTDevices" component={DeviceListScreen} options={{ headerShown: false }} />

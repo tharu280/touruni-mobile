@@ -25,6 +25,7 @@ export type RootStackParamList = {
     plan?: PlanPayload;
     sessionId?: string;
   };
+  AdminDashboard: { adminToken: string };
 
   // ── IoT screens (new) ─────────────────────────────────────────────────────
   IoTDevices: undefined;
