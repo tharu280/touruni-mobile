@@ -5,7 +5,6 @@ import {
   FlatList,
   Pressable,
   SafeAreaView,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -237,12 +236,10 @@ export const AdminDashboardScreen = ({ navigation }: Props) => {
           </View>
         </View>
 
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.iotNavScroll}
-          contentContainerStyle={styles.iotNavRow}
-        >
+        {/* Wraps to a second row rather than scrolling — 5 chips don't fit one
+            row at this width, and a partially-visible chip at the edge reads
+            as broken even when the scroll position itself is correct. */}
+        <View style={styles.iotNavRow}>
           {ADMIN_NAV_ITEMS.map(item => (
             <Pressable
               key={item.target}
@@ -253,7 +250,7 @@ export const AdminDashboardScreen = ({ navigation }: Props) => {
               <Text style={styles.iotNavChipText}>{item.label}</Text>
             </Pressable>
           ))}
-        </ScrollView>
+        </View>
 
         {loading || adminInitializing ? (
           <View style={styles.centerContainer}>
@@ -342,8 +339,13 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodySemibold,
     fontSize: 13, marginTop: 2,
   },
-  iotNavScroll: { flexGrow: 0, marginBottom: 16 },
-  iotNavRow: { paddingHorizontal: 24, gap: 10, alignItems: 'center' },
+  iotNavRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 24,
+    gap: 10,
+    marginBottom: 16,
+  },
   iotNavChip: {
     flexDirection: 'row',
     alignItems: 'center',
