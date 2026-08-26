@@ -19,8 +19,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 import type { RootStackParamList } from '../navigation/types';
 import { fonts } from '../theme/colors';
+import { useAdminSession } from '../context/AdminSessionContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AdminDashboard'>;
+
+type AdminNavTarget = 'AdminIoTDevices' | 'AdminIoTProvision' | 'AdminIoTAlerts' | 'AdminIoTRecords' | 'AdminIoTLocations';
+
+const ADMIN_NAV_ITEMS: { target: AdminNavTarget; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
+  { target: 'AdminIoTDevices', label: 'Devices', icon: 'hardware-chip-outline' },
+  { target: 'AdminIoTProvision', label: 'Provision', icon: 'qr-code-outline' },
+  { target: 'AdminIoTAlerts', label: 'Alerts', icon: 'warning-outline' },
+  { target: 'AdminIoTRecords', label: 'Records', icon: 'document-text-outline' },
+  { target: 'AdminIoTLocations', label: 'Locations', icon: 'map-outline' },
+];
 
 interface Session {
   session_id: string;
@@ -35,12 +46,21 @@ interface Session {
   locations?: string[];
 }
 
-export const AdminDashboardScreen = ({ route, navigation }: Props) => {
-  const { adminToken } = route.params;
+export const AdminDashboardScreen = ({ navigation }: Props) => {
+  const { adminToken, initializing: adminInitializing, logoutAdmin } = useAdminSession();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  // Reached without a valid session (e.g. app reload with no persisted token,
+  // or the token was cleared) — bounce back to login rather than firing
+  // requests with adminToken === null.
+  useEffect(() => {
+    if (!adminInitializing && !adminToken) {
+      navigation.replace('Auth', { mode: 'login' });
+    }
+  }, [adminInitializing, adminToken, navigation]);
 
   const filteredSessions = React.useMemo(() => {
     if (!selectedDate) return sessions;
@@ -67,10 +87,16 @@ export const AdminDashboardScreen = ({ route, navigation }: Props) => {
   }, [sessions, selectedDate]);
 
   const fetchSessions = async () => {
+    if (!adminToken) return;
     try {
       const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/admin/sessions`, {
         headers: { Authorization: `Bearer ${adminToken}` },
       });
+      if (response.status === 401 || response.status === 403) {
+        await logoutAdmin();
+        navigation.replace('Auth', { mode: 'login' });
+        return;
+      }
       if (!response.ok) throw new Error('Failed to fetch sessions');
       const data = await response.json();
       setSessions(data.sessions);
@@ -89,8 +115,9 @@ export const AdminDashboardScreen = ({ route, navigation }: Props) => {
   };
 
   useEffect(() => {
-    fetchSessions();
-  }, []);
+    if (adminToken) fetchSessions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminToken]);
 
   const deleteSession = async (sessionId: string) => {
     Alert.alert('Delete Trip?', 'Are you sure you want to permanently delete this trip?', [
@@ -99,6 +126,7 @@ export const AdminDashboardScreen = ({ route, navigation }: Props) => {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
+          if (!adminToken) return;
           try {
             const response = await fetch(`${process.env.EXPO_PUBLIC_BACKEND_URL}/admin/sessions/${sessionId}`, {
               method: 'DELETE',
@@ -193,7 +221,13 @@ export const AdminDashboardScreen = ({ route, navigation }: Props) => {
       <LinearGradient colors={['#081C14', '#040C09']} style={StyleSheet.absoluteFill} />
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.header}>
-          <Pressable onPress={() => navigation.replace('Auth', { mode: 'login' })} style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}>
+          <Pressable
+            onPress={async () => {
+              await logoutAdmin();
+              navigation.replace('Auth', { mode: 'login' });
+            }}
+            style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+          >
             <Ionicons name="log-out-outline" size={24} color="#FFFFFF" />
           </Pressable>
           <View>
@@ -201,8 +235,24 @@ export const AdminDashboardScreen = ({ route, navigation }: Props) => {
             <Text style={styles.subtitle}>Manage Trips & Sessions</Text>
           </View>
         </View>
-        
-        {loading ? (
+
+        {/* Wraps to a second row rather than scrolling — 5 chips don't fit one
+            row at this width, and a partially-visible chip at the edge reads
+            as broken even when the scroll position itself is correct. */}
+        <View style={styles.iotNavRow}>
+          {ADMIN_NAV_ITEMS.map(item => (
+            <Pressable
+              key={item.target}
+              onPress={() => navigation.navigate(item.target)}
+              style={({ pressed }) => [styles.iotNavChip, pressed && styles.pressed]}
+            >
+              <Ionicons name={item.icon} size={16} color="#00D287" />
+              <Text style={styles.iotNavChipText}>{item.label}</Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {loading || adminInitializing ? (
           <View style={styles.centerContainer}>
             <ActivityIndicator color="#27B987" size="large" />
           </View>
@@ -289,6 +339,25 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bodySemibold,
     fontSize: 13, marginTop: 2,
   },
+  iotNavRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 24,
+    gap: 10,
+    marginBottom: 16,
+  },
+  iotNavChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 210, 135, 0.1)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 210, 135, 0.2)',
+    gap: 6,
+  },
+  iotNavChipText: { color: '#00D287', fontFamily: fonts.bodySemibold, fontSize: 13, fontWeight: '600' },
   centerContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   loadingText: { color: '#7C9B8C', fontFamily: fonts.body, marginTop: 12, fontSize: 15 },
   listContent: { padding: 20, paddingBottom: 120 },

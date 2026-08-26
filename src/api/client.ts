@@ -1,6 +1,7 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { File } from 'expo-file-system';
 
+import { refreshAccessTokenOnce } from './authRefresh';
 import {
   AuthResponse,
   ChatResponse,
@@ -30,24 +31,10 @@ type RequestOptions = RequestInit & {
   useExpoFetch?: boolean;
 };
 
-type AuthRefreshHandler = () => Promise<string | null>;
-
-let authRefreshHandler: AuthRefreshHandler | null = null;
-let authRefreshInFlight: Promise<string | null> | null = null;
-
-export const setAuthRefreshHandler = (handler: AuthRefreshHandler | null) => {
-  authRefreshHandler = handler;
-};
-
-const refreshAccessTokenOnce = async (): Promise<string | null> => {
-  if (!authRefreshHandler) return null;
-  if (!authRefreshInFlight) {
-    authRefreshInFlight = authRefreshHandler().finally(() => {
-      authRefreshInFlight = null;
-    });
-  }
-  return authRefreshInFlight;
-};
+// Refresh-handler state moved to authRefresh.ts so iotClient.ts can share the
+// same single-in-flight-refresh guard. Re-exported here so existing importers
+// (AppSessionContext.tsx) don't need an import-path change.
+export { setAuthRefreshHandler } from './authRefresh';
 
 const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   if (!BACKEND_URL) {

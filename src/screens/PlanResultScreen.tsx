@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StatusBar,
@@ -12,6 +13,7 @@ import {
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   getConditionNotifications,
   getSessionDashboard,
@@ -21,7 +23,11 @@ import {
 import { useVoiceUpdates } from '../hooks/useVoiceUpdates';
 import { VoiceNotificationCard } from '../components/VoiceNotificationCard';
 import { TripAssistantChatbot } from '../components/TripAssistantChatbot';
+import { DevicePickerModal } from '../components/DevicePickerModal';
 import { useAppSession } from '../context/AppSessionContext';
+import { useIoT } from '../context/IoTContext';
+import { startTrip } from '../api/iotClient';
+import type { DeviceSummary } from '../types/iot';
 import { fonts } from '../theme/colors';
 import {
   CrowdSection,
@@ -76,6 +82,14 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
   const [moodPromptDue, setMoodPromptDue] = useState(false);
   const [voiceUpdatesEnabled, setVoiceUpdatesEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const { devices, devicesLoading, refreshDevices, setActiveDevice, setActiveTripId } = useIoT();
+  const [devicePickerVisible, setDevicePickerVisible] = useState(false);
+  const [startingIoTTrip, setStartingIoTTrip] = useState(false);
+
+  useEffect(() => {
+    refreshDevices();
+  }, []);
 
   const { isPlaying, play, stop } = useVoiceUpdates(
     notifications,
@@ -140,6 +154,38 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
     }
   }, [accessToken, loadDashboard, requestedSessionId]);
 
+  const beginIoTTrip = useCallback(async (device: DeviceSummary) => {
+    setDevicePickerVisible(false);
+    setStartingIoTTrip(true);
+    try {
+      setActiveDevice(device.device_id);
+      if (!accessToken) return;
+      const trip = await startTrip(accessToken, {
+        device_id: device.device_id,
+        biometric_verified: true,
+        planning_session_id: requestedSessionId || undefined,
+      });
+      setActiveTripId(trip.trip_id);
+      navigation.navigate('IoTTripMonitor', {
+        deviceId: device.device_id,
+        tripId: trip.trip_id,
+        sessionId: requestedSessionId || undefined,
+      });
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'Could not start the trip.');
+    } finally {
+      setStartingIoTTrip(false);
+    }
+  }, [accessToken, navigation, requestedSessionId, setActiveDevice, setActiveTripId]);
+
+  const handleStartTripPress = () => {
+    if (devices.length === 1) {
+      beginIoTTrip(devices[0]);
+    } else if (devices.length > 1) {
+      setDevicePickerVisible(true);
+    }
+  };
+
   const conditionsDemo = useRepeatingDemoTask({
     enabled: conditionsDemoEnabled && Boolean(requestedSessionId),
     intervalMs: 60_000,
@@ -191,15 +237,16 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
         {activeTab === 'route' && <RouteSection dashboard={dashboard} model={model} />}
         
         <View style={{ display: activeTab === 'tips' ? 'flex' : 'none', flex: 1 }}>
-          <TipsSection 
-            dashboard={dashboard} 
-            model={model} 
-            accessToken={accessToken} 
-            moodDemoEnabled={moodDemoEnabled} 
+          <TipsSection
+            dashboard={dashboard}
+            model={model}
+            accessToken={accessToken}
+            moodDemoEnabled={moodDemoEnabled}
+            conditionsDemoEnabled={conditionsDemoEnabled}
             setMoodDemoEnabled={(val) => {
               setMoodDemoEnabled(val);
               if (val) setConditionsDemoEnabled(false);
-            }} 
+            }}
             moodPromptDue={moodPromptDue} 
             setMoodPromptDue={setMoodPromptDue} 
             moodDemo={{ running: moodTimerRemaining !== null, secondsRemaining: moodTimerRemaining || 0 }}
@@ -272,7 +319,7 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
         </View>
         <Pressable
           style={[styles.headerButton, intelligenceRefreshing && styles.headerButtonBusy]}
-          onPress={refreshIntelligence}
+          onPress={() => void conditionsDemo.triggerNow()}
           disabled={!requestedSessionId || intelligenceRefreshing}
           accessibilityLabel="Refresh trip intelligence"
         >
@@ -328,11 +375,13 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
                 <Text style={styles.demoEyebrow}>LIVE DEMO</Text>
                 <Text style={styles.demoTitle}>Refresh trip conditions</Text>
                 <Text style={styles.demoDetail}>
-                  {conditionsDemo.running
-                    ? 'Checking weather, crowd and road signals now...'
-                    : conditionsDemoEnabled
-                      ? `Next check in ${conditionsDemo.secondsRemaining}s. The latest result stays visible.`
-                      : 'Off. Turn on to refresh every 1 minute while the app is open.'}
+                  {moodDemoEnabled
+                    ? "Off — the Tips tab's mood check-in demo is running. Turn that off first."
+                    : conditionsDemo.running
+                      ? 'Checking weather, crowd and road signals now...'
+                      : conditionsDemoEnabled
+                        ? `Next check in ${conditionsDemo.secondsRemaining}s. The latest result stays visible.`
+                        : 'Off. Turn on to refresh every 1 minute while the app is open.'}
                 </Text>
                 {!conditionsDemo.running && displayTime ? (
                   <Text style={[styles.demoDetail, { color: '#FF6B6B', fontWeight: '700', marginTop: 2, fontSize: 13 }]}>
@@ -346,7 +395,7 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
                   setConditionsDemoEnabled(val);
                   if (val) setMoodDemoEnabled(false);
                 }}
-                disabled={!requestedSessionId}
+                disabled={!requestedSessionId || moodDemoEnabled}
                 trackColor={{ false: '#294239', true: '#1B765C' }}
                 thumbColor={conditionsDemoEnabled ? colors.mint : '#A7B5AE'}
               />
@@ -374,6 +423,40 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
           );
         })()}
 
+        {devices.length > 0 && dashboard && model && (
+          <View style={styles.demoControl}>
+            <View style={styles.demoControlCopy}>
+              <Text style={styles.demoEyebrow}>SAFETY</Text>
+              <Text style={styles.demoTitle}>Start trip monitoring</Text>
+              <Text style={styles.demoDetail}>
+                {devicesLoading
+                  ? 'Checking your registered devices...'
+                  : devices.length === 1
+                    ? `Monitor this trip with "${devices[0].label}".`
+                    : `${devices.length} devices available — choose one to start.`}
+              </Text>
+            </View>
+            <Pressable
+              onPress={handleStartTripPress}
+              disabled={startingIoTTrip || devicesLoading}
+              style={({ pressed }) => pressed && styles.pressed}
+            >
+              <LinearGradient
+                colors={['#27B987', '#169368']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={styles.iotStartBtn}
+              >
+                {startingIoTTrip ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.iotStartBtnText}>Start Trip</Text>
+                )}
+              </LinearGradient>
+            </Pressable>
+          </View>
+        )}
+
         {dashboard && model ? (
           <>
             {renderSection()}
@@ -385,6 +468,14 @@ export const PlanResultScreen = ({ navigation, route }: Props) => {
           </View>
         )}
       </ScrollView>
+
+      <DevicePickerModal
+        visible={devicePickerVisible}
+        devices={devices}
+        busy={startingIoTTrip}
+        onSelect={beginIoTTrip}
+        onClose={() => setDevicePickerVisible(false)}
+      />
 
       {dashboard && model && requestedSessionId && (
         <TripAssistantChatbot sessionId={requestedSessionId} />
@@ -518,6 +609,9 @@ const styles = StyleSheet.create({
   demoEyebrow: { color: colors.mint, fontSize: 9, letterSpacing: 1.3, fontWeight: '900' },
   demoTitle: { color: colors.warmWhite, fontSize: 15, fontWeight: '800', marginTop: 5 },
   demoDetail: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 5 },
+  iotStartBtn: { minHeight: 48, borderRadius: 24, paddingHorizontal: 22, alignItems: 'center', justifyContent: 'center' },
+  iotStartBtnText: { color: '#FFFFFF', fontFamily: fonts.bodySemibold, fontSize: 14, fontWeight: '700' },
+  pressed: { opacity: 0.85 },
   emptyState: { padding: 28, marginTop: 32, borderRadius: 20, alignItems: 'center', backgroundColor: colors.forestElevated, borderWidth: 1, borderColor: 'rgba(74, 214, 167, 0.22)' },
   emptyTitle: { color: colors.warmWhite, fontSize: 18, fontWeight: '700' },
   emptyCopy: { color: colors.textMuted, textAlign: 'center', marginTop: 8, lineHeight: 20 },

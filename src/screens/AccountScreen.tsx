@@ -59,6 +59,15 @@ export const AccountScreen = ({ navigation }: Props) => {
           </Pressable>
         ) : null}
 
+        <Pressable onPress={() => navigation.navigate('IoTDevices')} style={styles.latestCard}>
+          <View>
+            <Text style={styles.cardEyebrow}>SAFETY DEVICES</Text>
+            <Text style={styles.cardTitle}>Manage IoT devices</Text>
+            <Text style={styles.cardSubtitle}>Pair a device and monitor live driver &amp; vehicle safety data.</Text>
+          </View>
+          <Text style={styles.cardArrow}>→</Text>
+        </Pressable>
+
         <Pressable disabled={signingOut} onPress={signOut} style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}>
           {signingOut ? <ActivityIndicator color={colors.error} /> : <Text style={styles.signOutText}>Sign out</Text>}
         </Pressable>
