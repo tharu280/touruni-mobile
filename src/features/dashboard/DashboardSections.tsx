@@ -1339,6 +1339,15 @@ export const TipsSection = ({ model, accessToken, moodDemoEnabled, setMoodDemoEn
     });
   };
   const checkins = journey?.emotion_checkins || [];
+  const latestByTarget = useMemo(() => {
+    const map = new Map<string, EmotionCheckinRecord>();
+    checkins.forEach(checkin => {
+      if (checkin.attraction_id) {
+        map.set(checkin.attraction_id, checkin);
+      }
+    });
+    return map;
+  }, [checkins]);
   const selectedTarget = targets.find(target => target.attraction_id === selectedTargetId)
     || targets[0];
 
@@ -1573,15 +1582,30 @@ export const TipsSection = ({ model, accessToken, moodDemoEnabled, setMoodDemoEn
                   <Text style={styles.expandGlyph}>{isExpanded ? '−' : '+'}</Text>
                 </Pressable>
                 {isExpanded && (
-                  <View style={styles.choiceRow}>
-                    {dayTargets.map(target => (
-                      <Choice
-                        key={target.attraction_id}
-                        label={target.attraction_name}
-                        selected={selectedTarget?.attraction_id === target.attraction_id}
-                        onPress={() => { setSelectedTargetId(target.attraction_id); if (setMoodPromptDue) setMoodPromptDue(false); }}
-                      />
-                    ))}
+                  <View style={styles.timelineContainer}>
+                    {dayTargets.map((target, index) => {
+                      const checkin = latestByTarget.get(target.attraction_id);
+                      const mood = normalizeMood(checkin?.emotion_label);
+                      const emoji = checkin ? MOODS.find(item => item.key === mood)?.symbol : undefined;
+                      const isLast = index === dayTargets.length - 1;
+                      
+                      return (
+                        <View key={target.attraction_id} style={styles.timelineNode}>
+                          <View style={styles.timelineGraphic}>
+                            <View style={[styles.timelineDot, selectedTarget?.attraction_id === target.attraction_id && styles.timelineDotSelected]} />
+                            {!isLast && <View style={styles.timelineLine} />}
+                          </View>
+                          <View style={styles.timelineContent}>
+                            <Choice
+                              label={target.attraction_name}
+                              emoji={emoji}
+                              selected={selectedTarget?.attraction_id === target.attraction_id}
+                              onPress={() => { setSelectedTargetId(target.attraction_id); if (setMoodPromptDue) setMoodPromptDue(false); }}
+                            />
+                          </View>
+                        </View>
+                      );
+                    })}
                   </View>
                 )}
               </View>
@@ -1710,9 +1734,10 @@ export const TipsSection = ({ model, accessToken, moodDemoEnabled, setMoodDemoEn
   );
 };
 
-const Choice = ({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) => (
+const Choice = ({ label, selected, onPress, emoji }: { label: string; selected: boolean; onPress: () => void; emoji?: string }) => (
   <Pressable onPress={onPress} style={[styles.choice, selected && styles.choiceSelected]}>
     <Text style={[styles.choiceText, selected && styles.choiceTextSelected]}>{label}</Text>
+    {emoji && <Text style={{ marginLeft: 6, fontSize: 14 }}>{emoji}</Text>}
   </Pressable>
 );
 
@@ -1879,7 +1904,7 @@ const styles = StyleSheet.create({
   dayGroupTitle: { color: '#27B987', fontFamily: fonts.bodySemibold, fontSize: 13, letterSpacing: 1.1 },
   choiceHeading: { marginTop: 24, letterSpacing: 1.5 },
   choiceRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingTop: 14, paddingBottom: 6 },
-  choice: { minHeight: 44, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(39, 185, 135, 0.4)', paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(39, 185, 135, 0.12)', shadowColor: 'rgba(39, 185, 135, 0)', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0, shadowRadius: 0 },
+  choice: { flexDirection: 'row', minHeight: 44, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(39, 185, 135, 0.4)', paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(39, 185, 135, 0.12)', shadowColor: 'rgba(39, 185, 135, 0)', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0, shadowRadius: 0 },
   choiceSelected: { borderColor: '#27B987', backgroundColor: '#27B987', shadowColor: '#27B987', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.5, shadowRadius: 8, elevation: 4 },
   choiceText: { color: '#8BA398', fontFamily: fonts.bodySemibold, fontSize: 13, letterSpacing: 0.3 },
   choiceTextSelected: { color: '#05120D', fontWeight: '900' },
@@ -2076,4 +2101,11 @@ const styles = StyleSheet.create({
   tipsCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#1C3B2D' },
   tipsCardFooterMeta: { color: colors.textMuted, fontFamily: fonts.body, fontSize: 12 },
   tipsCardMapLink: { color: '#38DFA8', fontFamily: fonts.bodySemibold, fontSize: 13, fontWeight: '800' },
+  timelineContainer: { paddingTop: 16, paddingLeft: 8, paddingBottom: 6 },
+  timelineNode: { flexDirection: 'row', minHeight: 60 },
+  timelineGraphic: { width: 30, alignItems: 'center' },
+  timelineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(39, 185, 135, 0.4)', marginTop: 16 },
+  timelineDotSelected: { backgroundColor: '#27B987', shadowColor: '#27B987', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 6, elevation: 2 },
+  timelineLine: { width: 2, flex: 1, backgroundColor: 'rgba(39, 185, 135, 0.15)', marginTop: 4, marginBottom: -12 },
+  timelineContent: { flex: 1, paddingBottom: 16, paddingLeft: 12, alignItems: 'flex-start' },
 });
