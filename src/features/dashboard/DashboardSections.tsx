@@ -1010,13 +1010,19 @@ const MoodJourneyMap = ({
           font-size: 13px;
           line-height: 25px;
         }
+        .leaflet-layer,
+        .leaflet-control-zoom-in,
+        .leaflet-control-zoom-out,
+        .leaflet-control-attribution {
+          filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+        }
       </style>
     </head>
     <body>
       <div id="map"></div>
       <script>
         const map = L.map('map', { attributionControl: false, zoomControl: false });
-        L.tileLayer('https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', {
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 19
         }).addTo(map);
 
